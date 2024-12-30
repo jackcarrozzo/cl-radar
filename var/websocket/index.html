@@ -1,0 +1,45 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>LISP-CHAT</title>
+</head>
+
+<body>
+    <ul id="chat-echo-area">
+    </ul>
+    <div style="position:fixed; bottom:0;">
+        <input id="chat-input" placeholder="say something" >
+    </div>
+    <script>
+     window.onload = function () {
+         const inputField = document.getElementById("chat-input");
+
+         function receivedMessage(msg) {
+             console.log("got msg: ",msg);
+
+             let li = document.createElement("li");
+             li.textContent = msg.data;
+             document.getElementById("chat-echo-area").appendChild(li);
+         }
+
+         var uri="ws://localhost:5070/";
+
+         console.log("attempting ws connection to ",uri);
+         const ws = new WebSocket(uri);
+         ws.addEventListener('message', receivedMessage);
+
+         inputField.addEventListener("keyup", (evt) => {
+             if (evt.key === "Enter") {
+                 console.log("sending to ws: ",evt.target.value);
+                 ws.send(evt.target.value);
+                 evt.target.value = "";
+             }
+         });
+     };
+
+    </script>
+</body>
+</html>
+
