@@ -25,6 +25,8 @@
                :clunit
                :png
                :unit-test
+               :clack
+               :websocket-driver
 	       :cl-portaudio)
   :components ((:module "src"
                         :components
@@ -33,7 +35,7 @@
                          (:file "wavegen" :depends-on ("util"))
                          (:file "math" :depends-on ("util"))
                          (:file "image" :depends-on ("math"))
-                         (:file "fmcw" :depends-on ("util" "math" "wavegen" "audio"))
+                         (:file "fmcw" :depends-on ("util" "math" "wavegen" "audio" "image" "websocket"))
                          (:file "websocket" :depends-on ("util"))
                          (:file "util")
                          (:file "t/main")

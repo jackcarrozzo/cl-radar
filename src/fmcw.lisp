@@ -242,10 +242,11 @@ CL-USER>
                (format t "~%"))
              (sleep 1.0))))
 
-(defvar n 9) ;; for below (TODO:)
+(defvar *n* 0) ;; for below
 
+;; wraps single fft slice in an object as fft_bin_sums[]
 @export
-(defun format-json-frame (&optional loop-fft-sums)
+(defun format-json-frame (&optional loop-fft-sums n)
   (when (not loop-fft-sums)
     (assert *last-timedomain-slices*)
     (setf loop-fft-sums
@@ -254,13 +255,14 @@ CL-USER>
             *last-timedomain-slices*))))
 
   (cl-json:encode-json-plist-to-string
-   `(:n ,n
+   `(:n ,(or n (incf *n*))
      :fft--length ,(length loop-fft-sums)
      :sample--rate--hz ,cl-radar.audio:*last-sample-rate*
-     :x--axis--m ,(make-vgplot-x-axis loop-fft-sums #'fmcw-dist-from-bin)
-     :x--axis--hz ,(make-vgplot-x-axis loop-fft-sums #'fft-bin-num-to-hz)
-     :fft--bin--sums ,loop-fft-sums)))
+     ;;:x--axis--m ,(make-vgplot-x-axis loop-fft-sums #'fmcw-dist-from-bin)
+     ;;:x--axis--hz ,(make-vgplot-x-axis loop-fft-sums #'fft-bin-num-to-hz)
+     :fft--bin--mags ,loop-fft-sums)))
 
+;; wraps a list of fft mag arrays into an object as fft_bin_slices[[]]
 @export
 (defun format-json-waterfall (&optional (fft-slices-list *last-fft-slices*))
   #|(when (not fft-slices-list)
@@ -280,9 +282,31 @@ CL-USER>
      :x--axis--hz ,(make-vgplot-x-axis (first fft-slices-list) #'fft-bin-num-to-hz)
      :fft--bin--slices ,fft-slices-list)))
 
+
+#|
+(cl-radar.fmcw:looping-ws-fft-stream
+  cl-radar.fmcw::*last-fft-slices* :max-loops-thru 10)
+|#
+
+@export
+(defun looping-ws-fft-stream (fft-slices-list &key (max-loops-thru 1000) (delay-s 0.5))
+  (let ((ws-server-handler (cl-radar.websocket:run))
+        (curr-slice 0))
+    (dotimes (i max-loops-thru)
+      (loop for this-slice in fft-slices-list
+            do
+               (progn
+                 (cl-radar.websocket:send-to-all-clients
+                  (format-json-frame this-slice (incf curr-slice)))
+                 (sleep delay-s))))
+    (format t "-- done, cleaning up.~%")
+    (cl-radar.websocket:stop ws-server-handler)))
+
+
+
 @export
 (defun write-js-waterfall (&optional (fpath
-                                      "~/Projects/graphthis/from-pnw/www/wfdata.js"))
+                                      "~/Projects/cl-radar/data/wfdata.js"))
   (cl-radar.util:write-string-to-js-file
    fpath "waterfalldata"
    (format-json-waterfall)))

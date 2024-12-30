@@ -9,17 +9,23 @@
 (defvar *connections* (make-hash-table))
 
 (defun handle-new-connection (con)
-  (format t "new client connection: ~a~%" con)
+  (format t "-- ws server: new client connection: ~a~%" con)
 
   (setf (gethash con *connections*)
         (format nil "user-~a" (random 100000))))
 
-(defun handle-close-connection (connection)
-  (let ((message (format nil " .... ~a has left."
+(defun handle-close-connection (connection &optional code reason)
+  (let ((message (format nil "---- ~a has left."
                          (gethash connection *connections*))))
+    (declare (ignore message))
+    (format t "-- ws server: client close: ~a code ~a, reason ~a.~%"
+            (gethash connection *connections*) code reason)
     (remhash connection *connections*)
-    (loop :for con :being :the :hash-key :of *connections* :do
-          (websocket-driver:send con message))))
+
+    ;; tell all connections
+    ;;(loop :for con :being :the :hash-key :of *connections* :do
+    ;;  (websocket-driver:send con message))
+    ))
 
 @export
 (defun send-to-all-clients (msg)
@@ -30,21 +36,21 @@
   (let ((ws (websocket-driver:make-server env)))
     (websocket-driver:on :open ws
                          (lambda ()
-                           (format t "new connection arrived: ~a~%" ws)
+                           (format t "-- ws server: new connection arrived: ~a~%" ws)
                            (handle-new-connection ws)))
 
     (websocket-driver:on :message ws
                          (lambda (msg)
-                           (format t "msg to all: ~a~%" msg)
-                           (send-to-all-clients (format nil "msg: ~a" msg))))
+                           (format t "-- ws server: msg in: ~a~%" msg)
+                           (send-to-all-clients (format nil "msg in and around: ~a" msg))))
 
     (websocket-driver:on :close ws
                          (lambda (&key code reason)
                            ;;(declare (ignore code reason))
-                           (format t "client close: code ~a, reason ~a.~%" code reason)
-                           (handle-close-connection ws)))
+                           (handle-close-connection ws code reason)))
     (lambda (responder)
-      (declare (ignore responder))
+      ;;(declare (ignore responder))
+      (format t "-- ws server: responder ~a~%" responder)
       (websocket-driver:start-connection ws))))
 
 (defvar *handler*)
@@ -55,6 +61,8 @@
         (clack:clackup #'ws-server :port +ws-port+)))
 
 @export
-(defun stop ()
-  (format t "-- stopping ws server on port ~a.~%"
-          +ws-port+))
+(defun stop (&optional (handler *handler*))
+  (format t "-- ws server: port ~a stopping...~%"
+          +ws-port+)
+  (clack:stop handler)
+  (format t "-- ws server: port ~a ended.~%" +ws-port+))
