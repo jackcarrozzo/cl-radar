@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head id="myhead">
+    
+	<!--
+	this all sucks
+
+	working: https://editor.p5js.org/SoftwareArt/sketches/HZEkEqvWV
+
+	https://github.com/processing/p5.js-sound/pull/322
+	https://developer.chrome.com/blog/autoplay/#webaudio
+	https://github.com/processing/p5.js-sound/pull/322
+
+	https://www.w3.org/TR/2008/WD-html5-20080610/dom.html#innerhtml0
+	https://stackoverflow.com/questions/16230886/trying-to-fire-the-onload-event-on-script-tag
+	https://stackoverflow.com/questions/14521108/dynamically-load-js-inside-js
+	https://www.educative.io/answers/how-to-dynamically-load-a-js-file-in-javascript
+
+
+	https://www.reddit.com/r/p5js/comments/jkrcjf/help_p5audioin_is_not_working/
+	https://github.com/processing/p5.js-web-editor/issues/170
+	https://github.com/processing/p5.js-web-editor/issues/276
+
+
+
+
+	<script src="lib/p5.js"></script>
+    <script src="lib/p5.sound.min.js"></script>
+	-->
+
+	<link rel="stylesheet" type="text/css" href="style.css">
+    <meta charset="utf-8" />
+
+	<script>
+	function doit_wrong() {
+		console.log("ok");
+
+		orighead=document.getElementById("myhead").innerHTML;
+		str="<script src=\"lib/p5.js\"></scri";
+		str+="pt>\n";
+		str+="<script src=\"lib/p5.sound.min.js\"></scri";
+		str+="pt>\n\n";
+		document.getElementById("myhead").innerHTML=str + orighead;
+	
+		origbody=document.getElementById("mybody").innerHTML;
+		str="<script src=\"sketch.js\"></scri";
+		str+="pt>\n\n";
+		document.getElementById("mybody").innerHTML=str+origbody;
+	
+		console.log("done");
+	}
+
+	function doit () {
+		var el = document.createElement('script');
+		el.src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.1.9/p5.js";
+		document.head.appendChild(el);
+
+		console.log("done");
+	}
+
+	function thing2() {
+		el = document.createElement('script');
+        el.src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.1.9/addons/p5.sound.min.js";
+        document.head.appendChild(el);
+	}
+
+	function thing3() {
+		el = document.createElement('script');
+        el.src="sketch.js";
+        document.body.appendChild(el);
+	}
+	</script>
+
+  </head>
+  <body id="mybody">
+    <!--<script src="sketch.js"></script>-->
+	<input type="button" onclick="doit()" value="do it"><br>
+	<input type="button" onclick="thing2()" value="next"><br>
+	<input type="button" onclick="thing3()" value="this one">
+  </body>
+</html>

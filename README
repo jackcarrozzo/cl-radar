@@ -1,0 +1,6 @@
+* cl-radar *
+
+sbcl --non-interactive --eval "(ql:quickload 'cl-radar)" --eval "(cl-radar.test-main:run)"
+
+(cl-radar.fmcw::single-capture-and-plot)
+
