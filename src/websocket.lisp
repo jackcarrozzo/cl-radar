@@ -28,7 +28,10 @@
     ))
 
 @export
-(defun send-to-all-clients (msg)
+(defun send-to-all-clients (msg &optional dont-autostart-p)
+  (when (not dont-autostart-p)
+    (run-if-not-already))
+
   (loop :for con :being :the :hash-key :of *connections* :do
     (websocket-driver:send con msg)))
 
@@ -53,7 +56,13 @@
       (format t "-- ws server: responder ~a~%" responder)
       (websocket-driver:start-connection ws))))
 
-(defvar *handler*)
+(defvar *handler* nil)
+
+@export
+(defun run-if-not-already ()
+  (when (not *handler*)
+    (format t "-- ws run-if-not-already: werent yet running, doing it.~%")
+    (run)))
 
 @export
 (defun run ()
@@ -62,7 +71,10 @@
 
 @export
 (defun stop (&optional (handler *handler*))
+  (assert handler)
+
   (format t "-- ws server: port ~a stopping...~%"
           +ws-port+)
   (clack:stop handler)
-  (format t "-- ws server: port ~a ended.~%" +ws-port+))
+  (format t "-- ws server: port ~a ended.~%" +ws-port+)
+  (setf *handler* nil))

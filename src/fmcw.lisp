@@ -264,7 +264,7 @@ CL-USER>
 
 ;; wraps a list of fft mag arrays into an object as fft_bin_slices[[]]
 @export
-(defun format-json-waterfall (&optional (fft-slices-list *last-fft-slices*))
+(defun format-json-waterfall (&optional (fft-slices-list *last-fft-slices*) n)
   #|(when (not fft-slices-list)
     (assert *last-timedomain-slices*)
     (setf fft-slices-list
@@ -275,34 +275,89 @@ CL-USER>
   (assert fft-slices-list)
 
   (cl-json:encode-json-plist-to-string
-   `(:n ,n
+   `(:n ,(or n (incf *n*))
      :num--fft--slices ,(length fft-slices-list)
      :sample--rate--hz ,cl-radar.audio:*last-sample-rate*
      :x--axis--m ,(make-vgplot-x-axis (first fft-slices-list) #'fmcw-dist-from-bin)
      :x--axis--hz ,(make-vgplot-x-axis (first fft-slices-list) #'fft-bin-num-to-hz)
      :fft--bin--slices ,fft-slices-list)))
 
+(defvar *looper-thread* nil)
+
+;; CL-USER> (cl-radar.fmcw:threaded-looping-ws-stream)
+;; CL-USER> (cl-radar.fmcw:stop-looper)
+;;  (sb-thread:list-all-threads )
+
+
+@export
+(defun threaded-looping-ws-stream (&key (fft-slices-list *last-fft-slices*)
+                                     (max-loops-thru 1000)
+                                     (delay-s 0.1))
+
+  (if *looper-thread*
+      (progn
+        (format t "-- not starting another looping thread! one exists.~%")
+        *looper-thread*)
+      (progn
+
+        (format t "-- starting looping-ws-fft-stream in thread... ~%")
+
+        (cl-radar.websocket:run-if-not-already) ;; blows up if ws is started from other thread
+
+        (setf
+         *looper-thread*
+         (sb-thread:make-thread
+          (lambda ()
+            (write-line "---- hello from looper thread!~%")
+            (looping-ws-fft-stream fft-slices-list
+                                   :max-loops-thru max-loops-thru
+                                   :delay-s delay-s)
+            (write-line "--- looper thread all done, leaving.")
+            (setf *looper-thread* nil))))
+
+        (format t "-- ok, seems to have worked.~%")
+        (sb-thread:list-all-threads)
+        *looper-thread*)))
+
+@export
+(defun stop-looper (&optional (looper-thread *looper-thread*))
+  (sb-thread:list-all-threads)
+
+  (format t "-- stop on: ~a~%" looper-thread)
+
+  (sb-thread:terminate-thread looper-thread)
+
+  (setf *looper-thread* nil))
 
 #|
 (cl-radar.fmcw:looping-ws-fft-stream
   cl-radar.fmcw::*last-fft-slices* :max-loops-thru 10)
 |#
 
+;; TODO: send chunks of slices at a time (and tell the ui)
+
 @export
-(defun looping-ws-fft-stream (fft-slices-list &key (max-loops-thru 1000) (delay-s 0.5))
-  (let ((ws-server-handler (cl-radar.websocket:run))
-        (curr-slice 0))
-    (dotimes (i max-loops-thru)
-      (loop for this-slice in fft-slices-list
+(defun looping-ws-fft-stream (fft-slices-list &key (max-loops-thru 1000)
+                                              (slices-at-once 4)
+                                                (delay-s 0.5) (marker-p t))
+  (dotimes (i max-loops-thru)
+    (let ((curr-slice 0))
+
+      (loop while (< curr-slice (- (length fft-slices-list) slices-at-once))
             do
-               (progn
+               (let ((these-slices
+                       (subseq fft-slices-list
+                               curr-slice (+ curr-slice slices-at-once))))
                  (cl-radar.websocket:send-to-all-clients
-                  (format-json-frame this-slice (incf curr-slice)))
-                 (sleep delay-s))))
-    (format t "-- done, cleaning up.~%")
-    (cl-radar.websocket:stop ws-server-handler)))
-
-
+                  (format-json-waterfall these-slices (incf curr-slice slices-at-once)))
+                 (sleep delay-s)))
+      (when marker-p
+        (cl-radar.websocket:send-to-all-clients
+         (format-json-waterfall
+          (list (make-array 256 :initial-element 0.1)
+                (make-array 256 :initial-element 0.1)) ;; TODO:
+          curr-slice)))))
+  (format t "-- looping-ws-fft-stream done.~%"))
 
 @export
 (defun write-js-waterfall (&optional (fpath
