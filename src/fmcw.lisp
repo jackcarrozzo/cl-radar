@@ -280,7 +280,9 @@ CL-USER>
      :sample--rate--hz ,cl-radar.audio:*last-sample-rate*
      :x--axis--m ,(make-vgplot-x-axis (first fft-slices-list) #'fmcw-dist-from-bin)
      :x--axis--hz ,(make-vgplot-x-axis (first fft-slices-list) #'fft-bin-num-to-hz)
-     :fft--bin--slices ,fft-slices-list)))
+     :fft--bin--slices ,fft-slices-list
+     :win--length--sec ,(getf *last-stats* :avg-offset-trig-period-sec)
+     :trig--freq--hz ,(getf *last-stats* :avg-rising-trig-freq))))
 
 (defvar *looper-thread* nil)
 
@@ -291,7 +293,7 @@ CL-USER>
 
 @export
 (defun threaded-looping-ws-stream (&key (fft-slices-list *last-fft-slices*)
-                                     (max-loops-thru 1000)
+                                     (max-loops-thru 10000)
                                      (delay-s 0.1))
 
   (if *looper-thread*
