@@ -282,19 +282,21 @@ CL-USER>
      :x--axis--hz ,(make-vgplot-x-axis (first fft-slices-list) #'fft-bin-num-to-hz)
      :fft--bin--slices ,fft-slices-list
      :win--length--sec ,(getf *last-stats* :avg-offset-trig-period-sec)
-     :trig--freq--hz ,(getf *last-stats* :avg-rising-trig-freq))))
+     :win--length--samps ,(getf *last-stats* :avg-offset-trig-period)
+     :trig--freq--hz ,(getf *last-stats* :avg-rising-trig-freq)
+     :trigs--in--chunk ,(getf *last-stats* :trig-periods-kept))))
 
 (defvar *looper-thread* nil)
 
 ;; CL-USER> (cl-radar.fmcw:threaded-looping-ws-stream)
 ;; CL-USER> (cl-radar.fmcw:stop-looper)
-;;  (sb-thread:list-all-threads )
-
+;; CL-USER> (sb-thread:list-all-threads )
 
 @export
 (defun threaded-looping-ws-stream (&key (fft-slices-list *last-fft-slices*)
                                      (max-loops-thru 10000)
-                                     (delay-s 0.1))
+                                     (delay-s 0.2)
+                                     (log-p t))
 
   (if *looper-thread*
       (progn
@@ -313,7 +315,8 @@ CL-USER>
             (write-line "---- hello from looper thread!~%")
             (looping-ws-fft-stream fft-slices-list
                                    :max-loops-thru max-loops-thru
-                                   :delay-s delay-s)
+                                   :delay-s delay-s
+                                   :log-p log-p)
             (write-line "--- looper thread all done, leaving.")
             (setf *looper-thread* nil))))
 
@@ -332,6 +335,9 @@ CL-USER>
   (setf *looper-thread* nil))
 
 #|
+(progn (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :single-out-p nil) 7)
+(cl-radar.fmcw:looping-ws-fft-stream cl-radar.fmcw::*last-fft-slices*)
+
 (cl-radar.fmcw:looping-ws-fft-stream
   cl-radar.fmcw::*last-fft-slices* :max-loops-thru 10)
 |#
@@ -340,8 +346,8 @@ CL-USER>
 
 @export
 (defun looping-ws-fft-stream (fft-slices-list &key (max-loops-thru 1000)
-                                              (slices-at-once 4)
-                                                (delay-s 0.5) (marker-p t))
+                                              (slices-at-once 1)
+                                                (delay-s 0.1) (marker-p t) (log-p t))
   (dotimes (i max-loops-thru)
     (let ((curr-slice 0))
 
@@ -351,7 +357,15 @@ CL-USER>
                        (subseq fft-slices-list
                                curr-slice (+ curr-slice slices-at-once))))
                  (cl-radar.websocket:send-to-all-clients
-                  (format-json-waterfall these-slices (incf curr-slice slices-at-once)))
+                  (format-json-waterfall
+                   (if log-p
+                       (mapcar #'(lambda (s)
+                                   (cl-radar.math:array-add-offset
+                                    (cl-radar.math:dB-ulize-array s)
+                                    30))
+                               these-slices)
+                       these-slices)
+                   (incf curr-slice slices-at-once)))
                  (sleep delay-s)))
       (when marker-p
         (cl-radar.websocket:send-to-all-clients

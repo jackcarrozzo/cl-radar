@@ -58,9 +58,9 @@
                                collecting
                                (float-array-mostly-equal-p a1 a2)))))))
 
-;; ref its highest value
+;; ref its highest value; in place
 @export
-(defun dB-ulize-array (in-ar)
+(defun dB-ulize-array-in-place (in-ar)
   (let ((ar-len (array-dimension in-ar 0))
         (ar-max (aref in-ar 0)))
     (loop for i from 0 below ar-len ;; find max
@@ -71,12 +71,36 @@
           do
              (setf (aref in-ar i)
                    (*
-                    (log
-                     (/
-                      (aref in-ar i)
-                      (+ ar-max 0.000001)) ;; avoid div by 0
-                     10)
+                    (realpart
+                     (log
+                      (/
+                       (aref in-ar i)
+                       (+ ar-max 0.000001)) ;; avoid div by 0
+                      10))
                     10)))))
+
+@export
+(defun dB-ulize-array (in-ar)
+  (let* ((ar-len (array-dimension in-ar 0))
+         (r (make-array ar-len :initial-element 0.0d0))
+         (ar-max (aref in-ar 0)))
+    (loop for i from 0 below ar-len ;; find max
+          do
+             (when (> (aref in-ar i) ar-max)
+               (setf ar-max (aref in-ar i))))
+    (loop for i from 0 below ar-len ;; apply log
+          do
+             (setf (aref r i)
+                   (*
+                    (realpart
+                     (log
+                      (/
+                       (aref in-ar i)
+                       (+ ar-max 0.000001)) ;; avoid div by 0
+                      10))
+                    10)))
+    r))
+
 
 (defparameter +comp-ar-mag-dbg+ t) ;; t
 
