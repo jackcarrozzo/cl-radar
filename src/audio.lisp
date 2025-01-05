@@ -413,6 +413,7 @@ CL-USER>
 
 (defvar *last-fmcw-ins*) ;; array (2 1024)
 (defvar *last-fmcw-outs*)
+(defvar *last-fmcw-edges* nil)
 
 
 ;; TODO: reorg this monstrosity
@@ -509,7 +510,7 @@ CL-USER>
               ;; (funcall handle-radar-data-fn inbuf-2d-ar trigger-edges-list)
 
               (when read-cb-fn
-                (funcall read-cb-fn inbuf-2d-ar outbuf-2d-ar))
+                (funcall read-cb-fn inbuf-2d-ar outbuf-2d-ar *last-fmcw-edges*))
 
               ;; calc max
               ;(when calc-max-p
@@ -523,9 +524,14 @@ CL-USER>
 
 
               ;; TODO: carry args from wrapper
-              (cl-radar.wavegen:signals-fill-2ch-array outbuf-2d-ar
-                                     :left-sig-next-fn #'cl-radar.wavegen:ramp-get-next
-                                     :right-ampl 0.2)
+              (multiple-value-bind (ret-ar edges-list)
+                  (cl-radar.wavegen:signals-fill-2ch-array
+                   outbuf-2d-ar
+                   :left-sig-next-fn #'cl-radar.wavegen:ramp-get-next
+                   :right-ampl 0.2)
+                (declare (ignore ret-ar))
+
+                (setf *last-fmcw-edges* edges-list)) ;; TODO
 
               (pa:write-stream
                astream

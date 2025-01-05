@@ -43,7 +43,8 @@
 (defvar *amplitude* 0.5)
 (defvar *phase* 0.0) ;; current posn from 0 to 2*pi
 
-;; TODO: these both, and all instances of each, use and increment *phase*
+;; TODO: these both, and all instances of each, use and increment *phase*;
+;;  should have them return a closure for the wrapper to call
 
 @export
 (defun sines-get-next (&optional (sample-rate +s-r+) (freq +f+))
@@ -73,16 +74,29 @@
 (2d portaudio split array, (2 1024) :float)"
   (assert (= 2 (length (array-dimensions ar))))
 
-  (dotimes (i (array-dimension ar 1))
-    (setf (aref ar 0 i)
-          (coerce
-           (* left-ampl (apply left-sig-next-fn nil))
-           'single-float))
-    (setf (aref ar 1 i)
-          (coerce
-           (* right-ampl (apply right-sig-next-fn nil))
-           'single-float)))
-  ar)
+  (let ((last-trig-sample 0.1)
+        (trig-start-i 0)
+        (edges '()))
+    (dotimes (i (array-dimension ar 1))
+      (let ((trig-ch (coerce
+                      (* left-ampl (funcall left-sig-next-fn))
+                      'single-float)))
+        (setf (aref ar 0 i)
+              trig-ch)
+        (when (and (> last-trig-sample 0.0) ;; falling edge of trig channel
+                   (< trig-ch 0.0))
+
+          (push (cons trig-start-i (- i 1)) edges) ;; add (start . end) to edgelist
+          (setf trig-start-i i))
+        (setf last-trig-sample trig-ch))
+
+      (setf (aref ar 1 i)
+            (coerce
+             (* right-ampl (funcall right-sig-next-fn))
+             'single-float)))
+    (values
+     ar
+     (nreverse edges))))
 
 @export
 (defun sines-fill-2ch-array (ar)
