@@ -412,10 +412,12 @@ CL-USER>
 
 
 (defvar *last-fmcw-ins*) ;; array (2 1024)
+(defvar *last-fmcw-outs*)
 
 
+;; TODO: reorg this monstrosity
 @export
-(defun fmcw-gen-and-record (&optional (run-secs 5)) ;;TODO:
+(defun fmcw-gen-and-record (&key (run-secs 5) (read-cb-fn nil))
   "Generate ramp(s) out, record both chans in"
 
   (pa:with-audio
@@ -465,14 +467,18 @@ CL-USER>
            :frames-per-buffer +fmcw-frames-per-buffer+
            :stream-flags (:clip-off))
 
-        (let ((out-ar nil))
+        (let ((outbuf-2d-ar ;; needs to be here to feed read-cb-fn first time
+                (make-array (list 2 +fmcw-frames-per-buffer+)
+                            :initial-element 0.0)))
           (dotimes (i (round (/ (* run-secs +fmcw-sample-rate+) +fmcw-frames-per-buffer+)))
-            (let* ((r (pa:read-stream astream))
-                   (rr (pa:separate-array-to-channels astream r))
+            (let* ((inbuf-single-ar (pa:read-stream astream))
+                   (inbuf-2d-ar (pa:separate-array-to-channels astream inbuf-single-ar))
                    ;;(read-avail (pa:get-stream-read-available astream))
-                   (thismax 0.0))
+                   ;;(thismax 0.0)
+                   )
 
-              (setf *last-fmcw-ins* rr)
+              (setf *last-fmcw-ins* inbuf-2d-ar)
+              (setf *last-fmcw-outs* outbuf-2d-ar)
 
               #|(format t "-- r array dims: ~a, rr: ~a~%"
                       (array-dimensions r)
@@ -481,36 +487,49 @@ CL-USER>
               ;; -- r array dims: (2048), rr: (2 1024)
 
               ;; make outbuf
-              (when (not out-ar) ;; make sure out ar same shape as in
-                (setf out-ar
+              (when (not outbuf-2d-ar) ;; make sure out ar same shape as in
+                (setf outbuf-2d-ar
                       (make-array
-                       (array-dimensions rr)
+                       (array-dimensions inbuf-2d-ar)
                        :element-type 'single-float
                        :initial-element 0.0))
                 ;;(format t "-- made out-ar, dims: ~a~%" (array-dimensions out-ar))
                 )
 
-              ;; save inbufs
-              (setf *last-inbuf* r)
-              (when (not *first-inbuf*)
-                (setf *first-inbuf* r))
+              ;; save bufs TODO: are these used anymore
+              ;;(setf *last-inbuf* inbuf-2d-ar)
+              ;;(when (not *first-inbuf*)
+              ;;  (setf *first-inbuf* inbuf-2d-ar))
+
+              (setf *last-fmcw-outs* outbuf-2d-ar)
+
+              ;; TODO: carry context from wavegen thru to cb func:
+              ;;   let #'rampgen send a list of trigger edges (offsets into outbuf)
+              ;;   thru to callback fn a-la
+              ;; (funcall handle-radar-data-fn inbuf-2d-ar trigger-edges-list)
+
+              (when read-cb-fn
+                (funcall read-cb-fn inbuf-2d-ar outbuf-2d-ar))
 
               ;; calc max
-              (loop for i from 0 below (first (array-dimensions r))
-                    do
-                       (when (> (aref r i) thismax)
-                         (setf thismax (aref r i))))
-              ;;(format t "-- thismax: ~a~%" thismax)
-              (push thismax *maxes*)
+              ;(when calc-max-p
+              ;  ;; is this needed? TODO: use ar utils func
+              ;  (loop for i from 0 below (first (array-dimensions inbuf-single-ar))
+              ;        do
+              ;           (when (> (aref inbuf-single-ar i) thismax)
+              ;             (setf thismax (aref inbuf-single-ar i))))
+              ;  ;;(format t "-- thismax: ~a~%" thismax)
+              ;  (push thismax *maxes*))
 
 
-              (signals-fill-2d-array out-ar
-                                     :left-sig-next-fn #'ramp-get-next
+              ;; TODO: carry args from wrapper
+              (cl-radar.wavegen:signals-fill-2ch-array outbuf-2d-ar
+                                     :left-sig-next-fn #'cl-radar.wavegen:ramp-get-next
                                      :right-ampl 0.2)
 
               (pa:write-stream
                astream
-               (pa:merge-channels-into-array astream out-ar))
+               (pa:merge-channels-into-array astream outbuf-2d-ar))
               ;;(pa:write-stream astream out-ar)
               ;;(pa:write-stream astream (pa:read-stream astream))
               (incf n)))))

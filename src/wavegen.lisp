@@ -43,6 +43,8 @@
 (defvar *amplitude* 0.5)
 (defvar *phase* 0.0) ;; current posn from 0 to 2*pi
 
+;; TODO: these both, and all instances of each, use and increment *phase*
+
 @export
 (defun sines-get-next (&optional (sample-rate +s-r+) (freq +f+))
   (let ((r (* *amplitude* (sin (* freq *phase*)))))
@@ -59,7 +61,7 @@
         (r (- (* *phase* (/ *amplitude* ramp-period)) (/ *amplitude* 2.0))))
 
     (incf *phase* (* 2 pi (/ 1 sample-rate)))
-    (when (> r *amplitude*) ;; TODO:
+    (when (> r *amplitude*) ;; TODO: wtf
       (setf *phase* 0.0))
     r))
 
