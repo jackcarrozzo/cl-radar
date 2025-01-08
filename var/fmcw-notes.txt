@@ -1,0 +1,24 @@
+range fft, fast time: each sweep's samples from each rx channel
+-- complex results saved and stuffed into a vector of some length for
+doppler fft, slow time: fft of the range fft, tells how phase changes across sweeps (velocity)
+spacial or angle fft: across range fft values by rx antenna- range bin by bin (can it be all at once in 2d)
+-- for each rangefft bin, gives the freq and phase diff at antennas of that bins power
+---- complex results are: range fft bin power at angles split by bin
+
+
+
+for a pixel on normal radar graph:
+- distance r from origin: brightness varies with that range fft bin's magnitude
+- angle theta left or right of center:
+---- brightnes at each row/ring varies with spacial fft of that distance's range fft
+       across rxs's bin magnitude
+
+
+
+general cl-radar TODOs as of 2025-01-06:
+- finish making wavegen generators emit list of trigger edges in the returned buf
+- new top level loop thing to read live data, take the trigger edges and slice,
+   ship out to websocket
+- 2d fft- range doppler with beamstacking (phase rotation strategy vs subsample interpolation delay)
+- 3d fft with slow time doppler fft and fft across antennas
+- music, samv, etc

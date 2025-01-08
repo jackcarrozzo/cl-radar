@@ -37,6 +37,7 @@
                          (:file "image" :depends-on ("math"))
                          (:file "fmcw" :depends-on ("util" "math" "wavegen" "audio" "image" "websocket"))
                          (:file "websocket" :depends-on ("util"))
+                         (:file "gen" :depends-on ("util" "math"))
                          (:file "util")
                          (:file "t/main")
                          (:file "t/wavegen" :depends-on ("wavegen" "t/main"))
