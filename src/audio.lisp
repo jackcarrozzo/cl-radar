@@ -7,12 +7,58 @@
 (cl-syntax:use-syntax :annot)
 
 ;;;;;;;;; summary ;;;;;;;;;;
-;; portaudio: works bidir but wont go above 48khz
+;; portaudio: works bidir but wont go above 48khz even on devs that support 192khz
 ;; ffmpeg: wont listen to sample rate setting
 ;; sox: doesnt seem to do anythin with sample rate setting
 ;; audacity: appears to work
 ;; cl-wav: relies on riff which only supports 1 and 2 byte samples
 ;;
+
+
+#|
+CL-USER> (cl-radar.audio:print-portaudio-devices)
+PortAudio version number = 1246976
+PortAudio version text = PortAudio V19.7.0-devel, revision 147dd722548358763a8b649b3e4b41dfffbcfbb6
+Number of devices = 4
+---------------------- device 0
+[ Default Input, Default Output ]
+Name                        = Scarlett 18i8 USB
+Host API                    = Core Audio
+Max inputs = 20, Max outputs = 8
+Default low input latency   =   0.0100
+Default low output latency  =   0.0044
+Default high input latency  =   0.1000
+Default high output latency =   0.0137
+Default sample rate         = 48000.0000
+---------------------- device 1
+Name                        = MacBook Pro Microphone
+Host API                    = Core Audio
+Max inputs = 1, Max outputs = 0
+Default low input latency   =   0.0551
+Default low output latency  =   0.0100
+Default high input latency  =   0.0652
+Default high output latency =   0.1000
+Default sample rate         = 44100.0000
+---------------------- device 2
+Name                        = MacBook Pro Speakers
+Host API                    = Core Audio
+Max inputs = 0, Max outputs = 2
+Default low input latency   =   0.0100
+Default low output latency  =   0.0122
+Default high input latency  =   0.1000
+Default high output latency =   0.0223
+Default sample rate         = 44100.0000
+---------------------- device 3
+Name                        = Jack’s iPhone (2) Microphone
+Host API                    = Core Audio
+Max inputs = 1, Max outputs = 0
+Default low input latency   =   0.1284
+Default low output latency  =   0.0100
+Default high input latency  =   0.1378
+Default high output latency =   0.1000
+Default sample rate         = 48000.0000
+NIL
+|#
 
 @export
 (defun print-portaudio-devices ()
