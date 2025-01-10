@@ -132,12 +132,19 @@ EXAMPLE CALL:
 
     rx-array))
 
-;;;; without reference phased and unused vars:
+#|
+CL-USER> (defvar r (cl-radar.gen:simulate-fmcw-returns '((20.0 -15.0 10.0) (10.0 25.0 6.0)) :element-spacing 0.03 :carrier-freq 10000000000 :bandwidth 1000000000 :chirp-time 0.1 :sample-rate 48000))
+R
+CL-USER> (array-dimensions r)
+(4 4800)
+|#
+
+;;;; without reference phase and unused vars:
 @export
 (defun simulate-fmcw-returns (targets
                               &key
                               (num-antennas 4)
-                              (element-spacing 0.5d0)
+                              (element-spacing 0.5d0)        ; [m]
                               (carrier-freq 24.125e9)        ; [Hz]
                               (bandwidth 200e6)              ; [Hz]
                               (chirp-time 1e-3)              ; [s]
@@ -242,7 +249,7 @@ RETURNS:
 "
   (let* ((num-antennas (length antenna-data))
          ;; We assume all antenna arrays have the same length:
-         (num-samples (length (car antenna-data)))
+         (num-samples (length (first antenna-data)))
          ;; Allocate the result array (one complex sample per time index)
          (result (make-array num-samples
                              :initial-element #C(0.0d0 0.0d0)))
@@ -267,6 +274,50 @@ RETURNS:
         (setf (aref result s) sum-sample)))
     ;; Return the summed array
     result))
+
+@export
+(defun beam-angle-sum-2d-array
+    (samples angle-deg
+             &key
+               (element-spacing 0.03d0)       ; m
+               (wavelength 0.1d0))            ; m
+  "Perform beam summation on a 2D array of complex SAMPLES at the given
+ARRIVAL-ANGLE (ANGLE-DEG in degrees) assuming a linear antenna array.
+
+The 2D array SAMPLES is indexed as:
+  (aref samples antenna-index time-index)
+
+ELEMENT-SPACING is the distance between antenna elements.
+WAVELENGTH is the signal wavelength.  Defaults assume normalized spacing=1,
+wavelength=1 for demonstration.
+
+Returns a 1D array of complex samples representing the beamformed output
+at the specified arrival angle."
+  (let* ((num-antennas (array-dimension samples 0))
+         (num-time-samples (array-dimension samples 1))
+         ;; Convert angle from degrees to radians:
+         (theta-rad (* angle-deg Pi (/ 1.0d0 180.0d0)))
+         ;; Wave number k = 2π / λ
+         (k (/ (* 2.0d0 Pi) wavelength))
+         ;; Prepare output array
+         (output (make-array num-time-samples
+                             :initial-element #C(0.0d0 0.0d0))))
+    ;; For each time sample, sum across antennas with the appropriate phase shift
+    (dotimes (ts num-time-samples)
+      (let ((sum 0d0))  ;; Accumulate a complex sum at this time index
+        (dotimes (ant num-antennas)
+          ;; Phase shift for antenna element 'ant':
+          ;;
+          ;;     exp(-j * k * d * ant * sin(theta))
+          ;;
+          (let ((phase (exp (complex 0
+                                     (- (* k element-spacing ant
+                                           (sin theta-rad)))))))
+            (incf sum (* (aref samples ant ts) phase))))
+        (setf (aref output ts) sum)))
+    output))
+
+
 
 #|
 CL-USER> (let* ((samples #( #C(1d0 0d0)  ; e.g. 1 + j0

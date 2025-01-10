@@ -1015,3 +1015,42 @@ CL-USER>
                               (first edge-cons)
                               (- (rest edge-cons) (first edge-cons))))))
     (vgplot:plot ar)))
+
+
+
+;;;;;;;;;;;;;;;;
+
+(defun make-radial-graph-data (&optional (num-radials 32))
+  (let* ((rx-data (cl-radar.gen:simulate-fmcw-returns
+                   '((20.0 -15.0 10.0) (10.0 25.0 6.0))
+                   :element-spacing 0.03
+                   :carrier-freq 10000000000
+                   :bandwidth 100000000
+                   :chirp-time 0.01
+                   :sample-rate 48000))
+         (buflen (array-dimension rx-data 1))
+         (fftlen (expt 2 (1- (nth-value 1 (cl-radar.math:next-power-of-two buflen)))))
+         (radial-angle (/ 180.0 num-radials)) ; sector width
+         (end-angle-offset (/ radial-angle 2))
+         (results nil))
+    (format t "---- radial-angle ~a, end-angle-offset ~a.~%"
+            radial-angle end-angle-offset)
+    ;; angle should be the center of the sector
+    (loop for angle from (- end-angle-offset 90.0) to (- 90.0 end-angle-offset) by radial-angle
+          do
+             (let* ((angle-data (cl-radar.gen::beam-angle-sum-2d-array rx-data angle))
+                    (fft-data (bordeaux-fft:windowed-fft angle-data (/ fftlen 2) fftlen))
+                    (fft-mags (make-array (/ fftlen 2) :initial-element 0.0d0)))
+               (format t "-- adding data at angle ~a (~a samples)~%"
+                       angle (array-dimensions fft-data))
+
+               (push (cl-radar.math:complex-ar-mags fft-data fft-mags) results)))
+    (nreverse results)))
+
+(defun write-radial-graph-data ()
+  (cl-radar.util:write-string-to-js-file
+   "/Users/jackc/Projects/html5-display-widgets/data/radialfft.js"
+   "radialfft"
+   (cl-json:encode-json-to-string
+    (make-radial-graph-data)))
+  (format t "k.~%"))

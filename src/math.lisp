@@ -357,10 +357,13 @@
 
 @export
 (defun next-power-of-two (n)
-  (expt 2
-        (ceiling
-         (/ (float (log n))
-            (float (log 2))))))
+  (let ((power (ceiling
+                (/ (float (log n))
+                   (float (log 2))))))
+    (values
+     (expt 2
+           power)
+     power)))
 
 
 ;; grab from buffer into power-of-two sized array
