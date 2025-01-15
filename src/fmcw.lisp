@@ -1020,25 +1020,58 @@ CL-USER>
 
 ;;;;;;;;;;;;;;;;
 
-(defun make-radial-graph-data (&optional (num-radials 32))
-  (let* ((rx-data (cl-radar.gen:simulate-fmcw-returns
-                   '((20.0 -15.0 10.0) (10.0 25.0 6.0))
-                   :element-spacing 0.03
-                   :carrier-freq 10000000000
-                   :bandwidth 100000000
-                   :chirp-time 0.01
-                   :sample-rate 48000))
+;; '((10.0 0.7 10.0)) angle in radians, + is cw
+
+(defun array-slice (arr row)
+  (make-array (array-dimension arr 1)
+              :displaced-to arr
+              :displaced-index-offset (* row (array-dimension arr 1))))
+
+(defun carray-reals (complex-ar)
+  (let ((r (make-array (array-dimension complex-ar 0) :initial-element 0.0d0)))
+    (loop for i from 0 below (array-dimension complex-ar 0)
+          do
+             (setf (aref r i)
+                   (realpart (aref complex-ar i))))
+    r))
+
+;; TODO: if window length if over some limit by x, downsample it so we dont
+;;  get too many fft bins
+(defun make-radial-graph-data (&key (num-radials 17)
+                                 (carrier-freq-hz 10.0d9)
+                                 (element-spacing-m 0.01))
+  (let* ((wavelength-m (/ 3.0d8 carrier-freq-hz))
+         (rx-data (cl-radar.gen::generate-fmcw-if-samples
+                   ;;'((10.0 -55.0 10.0) (5.0 45.0 10.0))
+                   '((10.0 0.0 10.0)
+                     (30.0 45.0 5.0)
+                     (50 -50 8.0)
+                     (70 -12 10.0)
+                     )
+                   :element-spacing element-spacing-m
+                   :center-frequency carrier-freq-hz
+                   :bandwidth 1d9
+                   :sweep-time 0.02
+                   :sample-frequency 48000
+                   :num-elements 16
+                   :noise-std 20.0))
          (buflen (array-dimension rx-data 1))
-         (fftlen (expt 2 (1- (nth-value 1 (cl-radar.math:next-power-of-two buflen)))))
+         (fftlen
+           (max (expt 2 (1- (nth-value 1 (cl-radar.math:next-power-of-two buflen))))
+                1024))
          (radial-angle (/ 180.0 num-radials)) ; sector width
          (end-angle-offset (/ radial-angle 2))
          (results nil))
-    (format t "---- radial-angle ~a, end-angle-offset ~a.~%"
-            radial-angle end-angle-offset)
+    (format t "---- radial-angle ~a, end-angle-offset ~a. wavelen is ~a m, cf ~a mhz.~%"
+            radial-angle end-angle-offset wavelength-m (/ carrier-freq-hz 1d6))
     ;; angle should be the center of the sector
     (loop for angle from (- end-angle-offset 90.0) to (- 90.0 end-angle-offset) by radial-angle
           do
-             (let* ((angle-data (cl-radar.gen::beam-angle-sum-2d-array rx-data angle))
+             (let* ((angle-data
+                      (cl-radar.gen::beam-angle-sum-2d-array
+                       rx-data angle
+                       :element-spacing element-spacing-m
+                       :wavelength wavelength-m))
                     (fft-data (bordeaux-fft:windowed-fft angle-data (/ fftlen 2) fftlen))
                     (fft-mags (make-array (/ fftlen 2) :initial-element 0.0d0)))
                (format t "-- adding data at angle ~a (~a samples)~%"
@@ -1054,3 +1087,27 @@ CL-USER>
    (cl-json:encode-json-to-string
     (make-radial-graph-data)))
   (format t "k.~%"))
+
+(defun gen-thing ()
+  (let* ((rx-data (cl-radar.gen::generate-fmcw-if-samples
+                  '((3.0 45.0 10.0)
+                    ;;(0.5 -0.65 10.0)
+                    )
+                  :element-spacing 0.01
+                  :center-frequency 11d9
+                  :bandwidth 1d9
+                  :sweep-time 0.02
+                  :sample-frequency 48000
+                  :num-elements 4))
+         (ant2 (array-slice rx-data 2))
+         (mags
+           (cl-radar.math:complex-ar-mags
+            ant2
+            (make-array (/ (array-dimension ant2 0) 2) :initial-element 0.0d0))))
+    (format t "--- rxdata ~a~%" (array-dimensions rx-data))
+    (format t "--- ant2 ~a.~%" (array-dimensions ant2))
+    (format t "---mags ~a~%" (array-dimensions mags))
+
+    (vgplot:plot (subseq (carray-reals ant2) 0 100))
+    ;;(vgplot:plot (subseq mags 0 100))
+    ))
