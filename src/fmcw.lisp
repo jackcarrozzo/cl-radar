@@ -1035,11 +1035,51 @@ CL-USER>
                    (realpart (aref complex-ar i))))
     r))
 
+;; TODO: move all this crap to math or util
+
+#|
+CL-USER> (cl-radar.fmcw::carray-just-reals #(#c(3.3 4.4) #C(2.1 2.3)))
+#(#C(3.3 0.0) #C(2.1 0.0))
+|#
+
+;; return a complex array of same size but 0.0j
+(defun carray-just-reals (complex-ar)
+  (let ((r (make-array (array-dimension complex-ar 0) :initial-element #C(0.0d0 0.0d0))))
+    (loop for i from 0 below (array-dimension complex-ar 0)
+          do
+             (setf (aref r i)
+                   (complex (realpart (aref complex-ar i)) 0)))
+    r))
+
+#|
+CL-USER> (make-array '(4 6) :initial-element #C(1.1 2.2))
+#2A((#C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2))
+(#C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2))
+(#C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2))
+(#C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2) #C(1.1 2.2)))
+CL-USER> (cl-radar.fmcw::2d-carray-just-reals (make-array '(4 6) :initial-element #C(1.1 2.2)))
+#2A((#C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0))
+(#C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0))
+(#C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0))
+(#C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0) #C(1.1 0.0)))
+|#
+
+(defun 2d-carray-just-reals (complex-ar)
+  (let ((r (make-array (array-dimensions complex-ar) :initial-element #C(0.0d0 0.0d0))))
+    (loop for i from 0 below (array-dimension complex-ar 0)
+          do
+             (loop for j from 0 below (array-dimension complex-ar 1)
+                   do
+                      (setf (aref r i j)
+                            (complex (realpart (aref complex-ar i j)) 0))))
+    r))
+
 ;; TODO: if window length if over some limit by x, downsample it so we dont
 ;;  get too many fft bins
 (defun make-radial-graph-data (&key (num-radials 17)
                                  (carrier-freq-hz 10.0d9)
-                                 (element-spacing-m 0.01))
+                                 (element-spacing-m 0.01)
+                                 (reals-only-p nil))
   (let* ((wavelength-m (/ 3.0d8 carrier-freq-hz))
          (rx-data (cl-radar.gen::generate-fmcw-if-samples
                    ;;'((10.0 -55.0 10.0) (5.0 45.0 10.0))
@@ -1053,8 +1093,9 @@ CL-USER>
                    :bandwidth 1d9
                    :sweep-time 0.02
                    :sample-frequency 48000
-                   :num-elements 16
+                   :num-elements 24
                    :noise-std 20.0))
+         (rx-data-reals (2d-carray-just-reals rx-data))
          (buflen (array-dimension rx-data 1))
          (fftlen
            (max (expt 2 (1- (nth-value 1 (cl-radar.math:next-power-of-two buflen))))
@@ -1069,7 +1110,10 @@ CL-USER>
           do
              (let* ((angle-data
                       (cl-radar.gen::beam-angle-sum-2d-array
-                       rx-data angle
+                       (if reals-only-p
+                           rx-data-reals
+                           rx-data)
+                       angle
                        :element-spacing element-spacing-m
                        :wavelength wavelength-m))
                     (fft-data (bordeaux-fft:windowed-fft angle-data (/ fftlen 2) fftlen))
@@ -1080,12 +1124,15 @@ CL-USER>
                (push (cl-radar.math:complex-ar-mags fft-data fft-mags) results)))
     (nreverse results)))
 
+;; TODO: with reals only, radial graph shows mirror images across centerline. looks like
+;;  its in beam sum? try interpolating delay for reals-only case instead of complex rotating delay
+
 (defun write-radial-graph-data ()
   (cl-radar.util:write-string-to-js-file
    "/Users/jackc/Projects/html5-display-widgets/data/radialfft.js"
    "radialfft"
    (cl-json:encode-json-to-string
-    (make-radial-graph-data)))
+    (make-radial-graph-data :reals-only-p t)))
   (format t "k.~%"))
 
 (defun gen-thing ()
