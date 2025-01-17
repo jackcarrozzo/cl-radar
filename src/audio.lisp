@@ -832,8 +832,7 @@ env|awk '/^[a-zA-Z]/'|sed 's/^\(.*\)=\(.*\)$/(:\1 \. |\2|)/'|sed 's,|,",g'
       (when debug-p
         (format t "-- read wav: removing dc bias on left chan!~%"))
 
-      ;; TODO: move; was cl-radar.fmcw:
-      (remove-dc-bias *last-left-samps*) ;; TODO: parameterize
+      ;;(remove-dc-bias *last-left-samps*) ;; TODO: parameterize, both channels
 
       (when debug-p
         (format t "-- ok. now we have two arrays of length ~a samples or ~a seconds.~%"

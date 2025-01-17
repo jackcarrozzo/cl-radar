@@ -492,7 +492,9 @@ CL-USER>
   (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :single-out-p t))
 
 (cl-radar.image:write-slices-to-png
-  (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :single-out-p nil))
+(cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :single-out-p nil))
+
+(cl-radar.image:write-slices-to-png (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :wav-path "/Users/jackc/Projects/cl-radar/data/captrigfast_stereo.wav" :single-out-p nil :ac-trig-p t))
 |#
 
 @export
@@ -546,7 +548,8 @@ CL-USER>
 ;; this is the good new prefered method since it uses a constant ar size chosen at start
 ;;   (obv wont work for variable trigger timing)
 @export
-(defun read-and-slice-and-fft-stereo-wav (&key (wav-path "/Users/jackc/out.wav") (debug-p t) (single-out-p t))
+(defun read-and-slice-and-fft-stereo-wav (&key (wav-path "/Users/jackc/out.wav")
+                                            (debug-p t) (single-out-p t) (ac-trig-p nil))
   (format t "-- read-and-slice-stereo-wav: ~a~%" wav-path)
 
   (cl-radar.audio:read-wav wav-path t)
@@ -557,7 +560,9 @@ CL-USER>
   (let* ((trigger-edges
            (apply-edge-offsets
             (filter-wack-edges
-             (find-edges cl-radar.audio:*last-left-samps*))))
+             (if ac-trig-p
+                 (find-ac-edges cl-radar.audio:*last-left-samps*)
+                 (find-edges cl-radar.audio:*last-left-samps*)))))
          (avg-trig-len (getf *last-stats* :avg-offset-trig-period))
          (ar-sample-len (cl-radar.math:next-power-of-two avg-trig-len))
          (sample-ar (make-array ar-sample-len :initial-element 0.0d0)))
@@ -1004,6 +1009,55 @@ CL-USER>
        (setf *last-found-edges*
              (reverse r))
        avg-samps-per-trig))))
+
+
+@export
+(defun find-ac-edges (trigger-ar &key (trig-rising-thresh 0.5) ;; as ratios of max and min
+                                   (trig-falling-thresh 0.3)   ;;   respectively
+                                   (min-slope 0.1)            ;; val per sample
+                                   (debug-p nil))
+  (multiple-value-bind
+        (max min)
+      (cl-radar.math:array-max-min trigger-ar)
+    (let* ((rising-thresh-val (* max trig-rising-thresh))
+           (falling-thresh-val (* min trig-falling-thresh))
+           (starting-edge nil)
+           (r nil))
+      (assert (< rising-thresh-val max))
+      (assert (< falling-thresh-val rising-thresh-val))
+      (assert (< min falling-thresh-val))
+
+      (format t "-- max ~a, thresh ~a~%"
+              max rising-thresh-val)
+      (format t "-- min ~a, thresh ~a~%"
+              min falling-thresh-val)
+
+      (loop for i from 1 below (array-dimension trigger-ar 0)
+            do
+               (let ((this-val (aref trigger-ar i))
+                     (last-val (aref trigger-ar (1- i))))
+                 (when (and (< this-val falling-thresh-val)
+                            (> last-val (+ this-val min-slope))) ;; slope trails current val
+                   (cond
+                     (starting-edge
+                      (push (cons starting-edge i) r)
+                      (setf starting-edge nil)
+                      (when debug-p
+                        (format t "-- found falling edge at ~a.~%" i)))
+                     (t
+                      (when debug-p
+                        (format t "-- found falling edge at ~a but not triggered.~%" i)))))
+                 (when (and (> this-val rising-thresh-val)
+                            (< last-val (- this-val min-slope)))
+                   (cond
+                     ((not starting-edge)
+                      (setf starting-edge i)
+                      (when debug-p
+                        (format t "-- found rising edge at ~a.~%" i)))
+                     (t
+                      (when debug-p
+                        (format t "-- found rising edge at ~a but currently triggered.~%" i)))))))
+      (nreverse r))))
 
 (defvar *last-plotted-chunk* nil)
 

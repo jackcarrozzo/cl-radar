@@ -304,9 +304,10 @@
          (second slices)
          #(-1.0 1.0 -1.0 1.0)))))
 
-(deftest test-array-max (BasicArraySuite)
+(deftest test-array-max-min (BasicArraySuite)
+  ;; TODO: needs to cover min too
   (assert-equal
-      (cl-radar.math:array-max #(-3.3 0.0 2.2 9.9 0.1 -3.3))
+      (cl-radar.math:array-max-min #(-3.3 0.0 2.2 9.9 0.1 -3.3))
       9.9))
 
 (deftest test-array-list-max (BasicArraySuite)

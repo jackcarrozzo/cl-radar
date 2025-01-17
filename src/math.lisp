@@ -340,18 +340,22 @@
         (array-dimension ar 0)))))
 
 @export
-(defun array-max (ar)
-  (let ((max (aref ar 0)))
+(defun array-max-min (ar)
+  (let ((max (aref ar 0))
+        (min (aref ar 0)))
     (loop for i from 1 below (array-dimension ar 0)
           do
-             (when (> (aref ar i) max)
-               (setf max (aref ar i))))
-    max))
+             (progn
+               (when (> (aref ar i) max)
+                 (setf max (aref ar i)))
+               (when (< (aref ar i) min)
+                 (setf min (aref ar i)))))
+    (values max min)))
 
 @export
 (defun array-list-max (ar-list)
   (reduce #'max
-          (mapcar #'array-max
+          (mapcar #'array-max-min
                   ar-list)))
 
 

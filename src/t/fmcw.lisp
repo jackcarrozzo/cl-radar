@@ -54,3 +54,11 @@
        #(-0.5 -0.4 -0.3 0.2 0.3 0.4 -0.4 -0.5 -0.6 -0.2 0.1 0.2 0.3 0.4 0.5 0.6 0.2 -0.1 -0.2 -0.3 -0.4 -0.5 0.5 0.9 0.8 0.9 -0.2 -0.1 0.5))
     (assert-equal r '((3 . 6) (10 . 17) (22 . 26)))
     (assert-equal period 8.333333)))
+
+(deftest test-find-ac-edges (EdgeSuite)
+  (cl-radar.audio:read-wav "../data/captrigfast_stereo_vshort.wav" t)
+  (assert-equal
+      (cl-radar.fmcw::find-ac-edges
+       cl-radar.audio::*last-left-samps*
+       :min-slope 0.1)
+      '((439 . 912) (1146 . 1618))))
