@@ -1,2 +1,9 @@
 read raw pcm, 24 bit
 
+
+
+- front end: dynamic waveform views, signals and trigger indication
+- websocket: kick periodic wave segment dumps into stream
+
+- wav: read n channels "at once"
+- run stereo data
