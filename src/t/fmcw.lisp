@@ -62,3 +62,12 @@
        cl-radar.audio::*last-left-samps*
        :min-slope 0.1)
       '((439 . 912) (1146 . 1618))))
+
+(deftest test-filter-edges-by-bound (EdgeSuite)
+  (let ((e (list (cons 3 9) (cons 11 30) (cons 34 54) (cons 60 70) (cons 72 80))))
+    (assert-equal
+        (cl-radar.fmcw::filter-edges-by-bound e 20 75)
+        '((34 . 54) (60 . 70)))
+    (assert-equal
+        (cl-radar.fmcw::filter-edges-by-bound e 20 100)
+        '((34 . 54) (60 . 70) (72 . 80)))))

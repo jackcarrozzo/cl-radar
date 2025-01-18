@@ -171,8 +171,11 @@
 ;; copy src-ar[start:end] into dst-ar starting at dst-offset
 @export
 (defun array-copy-into (src-ar start end dst-ar &optional (dst-offset 0))
+  ;;(format t "ar dim dist-ar 0: ~a~%" (array-dimension dst-ar 0))
+  ;;(format t "math end start: ~a~%" (+ (- end start) dst-offset))
   (assert (>= (array-dimension dst-ar 0) (+ (- end start) dst-offset)))
-  (assert (>= (array-dimension src-ar 0) (- end 1)))
+  ;;(assert (>= (array-dimension src-ar 0) (- end 1)))
+  (assert (>= (array-dimension src-ar 0) end))
   ;;(assert (> end start))
 
   (loop for i from start below end

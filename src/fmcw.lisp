@@ -26,6 +26,7 @@
 (defvar *last-right-samps*)
 ;;(defvar *last-sample-rate*)
 (defvar *last-timedomain-slices*)
+(defvar *last-fmcw-edges*)
 (defvar *fft-data*)
 (defvar *fft-data-real*)
 (defvar *last-fft-sum*)
@@ -256,6 +257,7 @@ CL-USER>
 
   (cl-json:encode-json-plist-to-string
    `(:n ,(or n (incf *n*))
+     :type "fft" ;; ie, single
      :fft--length ,(length loop-fft-sums)
      :sample--rate--hz ,cl-radar.audio:*last-sample-rate*
      ;;:x--axis--m ,(make-vgplot-x-axis loop-fft-sums #'fmcw-dist-from-bin)
@@ -276,6 +278,7 @@ CL-USER>
 
   (cl-json:encode-json-plist-to-string
    `(:n ,(or n (incf *n*))
+     :type "waterfall"
      :num--fft--slices ,(length fft-slices-list)
      :sample--rate--hz ,cl-radar.audio:*last-sample-rate*
      :x--axis--m ,(make-vgplot-x-axis (first fft-slices-list) #'fmcw-dist-from-bin)
@@ -285,6 +288,37 @@ CL-USER>
      :win--length--samps ,(getf *last-stats* :avg-offset-trig-period)
      :trig--freq--hz ,(getf *last-stats* :avg-rising-trig-freq)
      :trigs--in--chunk ,(getf *last-stats* :trig-periods-kept))))
+
+@export
+(defun format-signal-and-trigger-frame (edge-list trigger-samples signal-samples-ars-list from-i to-i)
+  (let ((relevant-edges (filter-edges-by-bound edge-list from-i to-i))
+        ;;(trig-ar (subseq trigger-samples from-i to-i)) TODO:
+        (trig-ar (subseq trigger-samples 0 (- to-i from-i)))
+        (signal-ars (mapcar
+                     (lambda (s-ar)
+                       ;;(subseq s-ar from-i to-i) TODO:
+                       (subseq s-ar 0 (- to-i from-i)))
+                     signal-samples-ars-list)))
+    (format t "-- trig 1 2 3: ~a~%"
+            (subseq trigger-samples 0 3))
+    (format t "-- trig 1 2 3: ~a~%"
+            (subseq trigger-samples (- from-i 500) (- (+ from-i 3) 500)))
+
+    (cl-json:encode-json-plist-to-string
+     `(:n ,(incf *n*)
+       :type "wave"
+       :trigger--edges ,relevant-edges
+       :trigger--samples ,trig-ar
+       :signal--samples ,signal-ars))))
+
+@export
+(defun filter-edges-by-bound (edge-list from-i to-i)
+  (remove-if-not
+   (lambda (e)
+     (and
+      (>= (first e) from-i)
+      (<= (rest e) to-i)))
+   edge-list))
 
 (defvar *looper-thread* nil)
 
@@ -347,7 +381,9 @@ CL-USER>
 @export
 (defun looping-ws-fft-stream (fft-slices-list &key (max-loops-thru 1000)
                                               (slices-at-once 1)
-                                                (delay-s 0.1) (marker-p t) (log-p t))
+                                                (delay-s 0.1) (marker-p t)
+                                                (log-p t) (include-waves-every nil)
+                                                (wave-samples-len 700))
   (dotimes (i max-loops-thru)
     (let ((curr-slice 0))
       (loop while (< curr-slice (- (length fft-slices-list) slices-at-once))
@@ -365,6 +401,16 @@ CL-USER>
                                these-slices)
                        these-slices)
                    (incf curr-slice slices-at-once)))
+                 (when (and include-waves-every
+                            (= 0 (mod curr-slice include-waves-every)))
+                   (let* ((to-i (1- (array-dimension cl-radar.audio:*last-left-samps* 0)))
+                          (from-i (- to-i wave-samples-len)))
+                     (cl-radar.websocket:send-to-all-clients
+                      (format-signal-and-trigger-frame
+                       *last-fmcw-edges* cl-radar.audio:*last-left-samps*
+                       (list cl-radar.audio:*last-right-samps*)
+                       from-i to-i
+                       ))))
                  (sleep delay-s)))
       (when marker-p
         (cl-radar.websocket:send-to-all-clients
@@ -562,11 +608,13 @@ CL-USER>
              (if ac-trig-p
                  (find-ac-edges cl-radar.audio:*last-left-samps*)
                  (find-edges cl-radar.audio:*last-left-samps*)))
-            :start-offset 0 :end-offset 200))
+            :start-offset 3 :end-offset 3))
          (avg-trig-len (getf *last-stats* :avg-offset-trig-period))
          (ar-sample-len (cl-radar.math:next-power-of-two avg-trig-len))
          (sample-ar (make-array ar-sample-len :initial-element 0.0d0))
          (slices nil))
+    (setf *last-fmcw-edges* trigger-edges)
+
     (when debug-p
       (format t "--- read-and-slice-stereo-wav: ~a edges in, avg trigger len is ~a, using ar len ~a.~%"
               (length trigger-edges) avg-trig-len ar-sample-len))
@@ -588,16 +636,16 @@ CL-USER>
                 do
                    (let* ((this-edge (nth n trigger-edges))
                           (this-start (first this-edge))
-                          (this-end (rest this-edge)))
-                     (push
-                      (cl-radar.math:array-copy-into
-                       cl-radar.audio:*last-right-samps*
-                       this-start this-end
-                       sample-ar)
-                      slices)
-                     (cl-radar.math:dc-center-slice sample-ar)
-                     (cl-radar.math:array-set-range
-                      sample-ar this-end ar-sample-len 0.0)
+                          (this-end (rest this-edge))
+                          (samples-actual-ar (subseq cl-radar.audio:*last-right-samps* this-start this-end)))
+                     (cl-radar.math:dc-center-slice samples-actual-ar)
+                     (cl-radar.math:array-copy-into
+                      samples-actual-ar
+                      0 (array-dimension samples-actual-ar 0)
+                      sample-ar)
+
+                     (push sample-ar slices)
+
                      (let ((fft-r
                              (bordeaux-fft:windowed-fft
                               sample-ar (/ ar-sample-len 2) ar-sample-len)))
@@ -611,16 +659,26 @@ CL-USER>
                    (let* ((this-edge (nth n trigger-edges))
                           (this-start (first this-edge))
                           (this-end (rest this-edge))
-                          (result-ar (make-array (/ ar-sample-len 2) :initial-element 0.0d0)))
-                     (push
-                      (cl-radar.math:array-copy-into
-                       cl-radar.audio:*last-right-samps*
-                       this-start this-end
-                       sample-ar)
-                      slices)
-                     (cl-radar.math:dc-center-slice sample-ar)
-                     (cl-radar.math:array-set-range
-                      sample-ar this-end ar-sample-len 0.0)
+                          (result-ar (make-array (/ ar-sample-len 2) :initial-element 0.0d0))
+                          ;;(result-ar (make-array ar-sample-len :initial-element 0.0d0))
+                          (samples-actual-ar (subseq cl-radar.audio:*last-right-samps* this-start this-end)))
+                     ;;(format t "-- this trig period is from ~a to ~a, ~a samples, ar ~a.~%"
+                     ;;        this-start this-end (- this-end this-start)
+                     ;;        (array-dimensions test-ar))
+                     ;;(setf cl-user::*a* test-ar)
+                     ;;(vgplot:plot (nth 300 cl-radar.fmcw::*last-timedomain-slices*))
+
+                     ;; make sure to center slice before zero padding of it goes to hell
+                     (cl-radar.math:dc-center-slice samples-actual-ar)
+
+                     ;; copy the samples into the longer, initially 0.0, power-of-two sample array
+                     (cl-radar.math:array-copy-into
+                      samples-actual-ar
+                      0 (array-dimension samples-actual-ar 0)
+                      sample-ar)
+
+                     (push sample-ar slices)
+
                      (let ((fft-r
                              (bordeaux-fft:windowed-fft
                               sample-ar (/ ar-sample-len 2) ar-sample-len)))

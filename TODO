@@ -12,9 +12,3 @@ read raw pcm, 24 bit
 
 - tests: wav, gen, ws
 
-
-
-- read-and-slice-and-fft-stereo-wav:
---- keep increasing :end-offset to apply-edge-offsets but large
-      neg spike area is just as long but fewer and fewer data samples
-      in the center (??)
