@@ -8,342 +8,6 @@
 
 ;; code that was at least partially generated - useful but suspect
 
-
-(defconstant +c+ 3.0d8
-  "Speed of light in m/s (double-float).")
-
-@export
-(defun random-gaussian (&optional (mean 0d0) (std 1d0))
-  "Generate a single random deviate from a normal distribution with
-the given MEAN and STD (standard deviation), using the Box-Muller transform."
-  (multiple-value-bind (u1 u2)
-      (values (random 1.0d0) (random 1.0d0))
-    (let* ((r (sqrt (* -2d0 (log (max u1 1.0d-30)))))  ; avoid log(0)
-           (theta (* 2d0 pi u2)))
-      (+ mean (* std r (cos theta))))))
-
-@export
-(defun generate-fmcw-if-samples
-    (targets
-     &key
-       (center-frequency 1.05d10)   ; 10.5 GHz default
-       (bandwidth       1.0d9)     ; 1 GHz default
-       (sample-frequency 4.8d4)    ; 48 kHz default
-       (sweep-time      0.016d0)   ; 16 ms default
-       (element-spacing 0.01d0)    ; spacing between array elements in meters
-       (num-elements    8)         ; how many elements in the linear array
-       (noise-std       0.0d0))    ; noise standard deviation (default: no noise)
-  "Generate a 2D array of complex IF samples for a single positive-ramp FMCW chirp.
-TARGETS is a list of (range-m angle-deg amplitude). Returns a
-NUM-ELEMENTS x NUM-SAMPLES array of complex double-floats.
-SWEEP-TIME (default 16 ms) is used to derive the internal sweep slope:
-  (slope) = BANDWIDTH / SWEEP-TIME.
-NOISE-STD is the standard deviation of additive Gaussian noise on the final sum."
-  (let* (;; Compute the sweep slope (Hz/s)
-         (sweep-frequency (/ bandwidth sweep-time))
-         ;; The duration of one chirp (sweep)
-         (chirp-time sweep-time)
-         ;; Number of time samples for this single chirp
-         (num-samples (round (* chirp-time sample-frequency)))
-         ;; Allocate 2D result array: row=element, col=sample
-         (if-array (make-array (list num-elements num-samples)
-                               :initial-element #c(0d0 0d0))))
-
-    ;; Time loop over samples
-    (dotimes (n num-samples)
-      (let ((tm (/ n sample-frequency)))  ; time in seconds
-        ;; Loop over antenna elements
-        (dotimes (elem num-elements)
-          (let ((sum-of-targets #c(0d0 0d0)))
-            ;; Sum the contribution of each target
-            (dolist (target targets)
-              (destructuring-bind (range-m angle-deg amplitude) target
-                (let* ((theta-rad (* angle-deg (/ pi 180.0d0)))
-                       ;; Beat frequency for this target
-                       (f-b (* sweep-frequency (/ (* 2d0 range-m) +c+)))
-                       ;; Phase offset for angle at this element
-                       (element-phase-offset
-                         (* 2d0 pi (/ center-frequency +c+)
-                            elem element-spacing (sin theta-rad)))
-                       ;; Instantaneous phase for time t
-                       (inst-phase (+ (* 2d0 pi f-b tm)
-                                      element-phase-offset)))
-                  (incf sum-of-targets
-                        (complex
-                         (* amplitude (cos inst-phase))
-                         (* amplitude (sin inst-phase)))))))
-            ;; Add noise to the final sum for this sample
-            ;; Each channel gets its own random noise in-phase & quadrature
-            (incf sum-of-targets
-                  (complex
-                   (random-gaussian 0d0 noise-std)
-                   (random-gaussian 0d0 noise-std)))
-
-            ;; Place result in output array
-            (setf (aref if-array elem n) sum-of-targets)))))
-    if-array))
-
-@export
-(defun generate-fmcw-if-samples-nonoise
-    (targets
-     &key
-       (center-frequency 1.05d10)   ; 10.5 GHz default
-       (bandwidth       1.0d9)     ; 1 GHz default
-       (sample-frequency 4.8d4)    ; 48 kHz default
-       (sweep-time      0.016d0)   ; 16 ms default
-       (element-spacing 0.01d0)    ; spacing between array elements in meters
-       (num-elements    8))        ; how many elements in the linear array
-  "Generate a 2D array of complex IF samples for a single positive-ramp FMCW chirp.
-TARGETS is a list of (range-m angle-deg amplitude). Returns a
-NUM-ELEMENTS x NUM-SAMPLES array of complex double-floats.
-The function uses SWEEP-TIME (default 16 ms) to derive an internal
-sweep slope = BANDWIDTH / SWEEP-TIME."
-  (let* (;; Compute the sweep slope (Hz/s)
-         (sweep-frequency (/ bandwidth sweep-time))
-         ;; The duration of one chirp is sweep-time
-         (chirp-time sweep-time)
-         ;; Number of time samples for this single chirp
-         (num-samples (round (* chirp-time sample-frequency)))
-         ;; Pre-allocate 2D result array: row=element, col=sample
-         (if-array (make-array (list num-elements num-samples)
-                               :initial-element #c(0d0 0d0))))
-
-    ;; Iterate over time samples
-    (dotimes (n num-samples)
-      (let ((tm (/ n sample-frequency)))  ; time in seconds
-        ;; For each element in the linear array
-        (dotimes (elem num-elements)
-          (let ((sum-of-targets #c(0d0 0d0)))  ; accumulate signals from all targets
-            (dolist (target targets)
-              ;; Destructure the target parameters
-              (destructuring-bind (range-m angle-deg amplitude) target
-                ;; Convert angle from degrees to radians
-                (let* ((theta-rad (* angle-deg (/ PI 180.0d0)))
-                       ;; The beat frequency for this target
-                       (f-b (* sweep-frequency
-                               (/ (* 2d0 range-m) +c+)))
-                       ;; Phase offset across array element for angle
-                       (element-phase-offset
-                         (* 2d0 pi (/ center-frequency +c+)
-                            elem element-spacing (sin theta-rad)))
-                       ;; Instantaneous phase for this sample
-                       (inst-phase (+ (* 2d0 pi f-b tm)
-                                      element-phase-offset)))
-                  ;; Add this target’s contribution at time t, element=elem
-                  (incf sum-of-targets
-                        (complex
-                         (* amplitude (cos inst-phase))
-                         (* amplitude (sin inst-phase)))))))
-            ;; Place the summed signal into the array
-            (setf (aref if-array elem n) sum-of-targets)))))
-    if-array))
-
-
-#|
-
-@export
-(defun simulate-fmcw-returns-with-carrier (targets
-                              &key
-                              (num-antennas 4)
-                              (element-spacing 0.01d0)
-                              (carrier-freq 10.100e9)        ; [Hz]
-                              (bandwidth 800e6)              ; [Hz]
-                              (chirp-time 1e-3)              ; [s]
-                              (sample-rate 1e6)              ; [samples/s]
-                              (speed-of-light 3.0d8))
-  "
-SIMULATE-FMCW-RETURNS computes a 2D array of complex samples representing
-the received FMCW signals at each of several antennas in a linear array.
-
-ARGUMENTS:
-  - TARGETS: A list of (distance angle amplitude) for each target.
-      distance -> [meters]
-      angle    -> [radians] (broadside = 0.0)
-      amplitude-> dimensionless scaling factor for the echo
-
-KEY PARAMETERS:
-  - NUM-ANTENNAS: Number of elements in the linear array
-  - ELEMENT-SPACING: Spacing (in meters) between adjacent array elements
-  - CARRIER-FREQ: Center frequency f0 of the chirp in Hz
-  - BANDWIDTH: Frequency sweep range in Hz
-  - CHIRP-TIME: Duration of one FMCW chirp in seconds
-  - SAMPLE-RATE: Baseband sampling rate in samples/sec
-  - SPEED-OF-LIGHT: Speed of wave propagation (m/s); defaults to 3e8
-
-RETURNS:
-  A 2D array of complex-double-float. Dimensions:
-    (num-antennas x number-of-time-samples)
-
-EXAMPLE CALL:
-  (simulate-fmcw-returns '((100.0d0 0.0d0 1.0d0) (150.0d0 0.1d0 0.8d0))
-                         :num-antennas 8
-                         :element-spacing 0.075d0
-                         :carrier-freq 77.0e9
-                         :bandwidth 1.0e9
-                         :chirp-time 5.0e-5
-                         :sample-rate 2.0e6)
-"
-  ;; Number of complex samples in time to simulate for one full chirp
-  (let* ((num-samples (round (* chirp-time sample-rate)))
-         ;; Allocate a 2D array: (antenna-index, time-sample-index)
-         (rx-array (make-array (list num-antennas num-samples)
-                               ;;:element-type 'complex-double-float
-                               :initial-element #C(0.0d0 0.0d0)))
-         ;; Precompute some constants
-         (dt (/ 1d0 sample-rate))       ; time step between samples
-         (chirp-slope (/ bandwidth chirp-time))  ; Hz per second
-         (two-pi 6.283185307179586d0)
-         (lambda (/ speed-of-light carrier-freq)) ; approximate wavelength
-         ;; For convenience, precompute wave number factor = (2π/λ)
-         (wave-number (/ (* 2d0 pi) lambda)))
-
-    ;; ----------------------------------------------------------------
-    ;; Fill in the 2D array with the sum of returns from all targets.
-    ;; ----------------------------------------------------------------
-    (dotimes (n num-samples)
-      (let* ((tm (* n dt))  ;; current time for this sample
-             ;; instantaneous chirp frequency at time t
-             ;; f(t) = f0 + chirp-slope * t
-             (inst-freq (+ carrier-freq (* chirp-slope tm)))
-             ;; baseband phase offset of the transmit signal so far
-             ;; phase(t) = 2π ∫(from 0 to t) f(τ) dτ
-             ;; = 2π [f0·t + (chirp-slope/2)·t^2]
-             (tx-phase (* two-pi
-                          (+ (* carrier-freq tm)
-                             (* 0.5 chirp-slope tm tm)))))
-        (declare (ignore inst-freq))
-        (declare (ignore tx-phase))
-
-        ;; Loop over each antenna element
-        (dotimes (ant num-antennas)
-          (let ((sum-of-targets 0d0))  ;; accumulate complex returns
-            (dolist (tg targets)
-              (destructuring-bind (distance angle amplitude) tg
-                ;; Round-trip delay for the target (distance -> round-trip 2R/c)
-                (let* ((delay (/ (* 2d0 distance) speed-of-light))
-                       ;; The time at which this path is "observed"
-                       (time-delay (- tm delay)))
-                  (when (plusp time-delay)
-                    ;; The instantaneous freq for the delayed signal
-                    ;; (assuming same chirp slope, just delayed)
-                    (let* ((inst-freq-target
-                            (+ carrier-freq (* chirp-slope time-delay)))
-                           ;; The transmit phase at the delayed time
-                           (tx-phase-target
-                            (* two-pi
-                               (+ (* carrier-freq time-delay)
-                                  (* 0.5 chirp-slope time-delay time-delay)))))
-                      (declare (ignore inst-freq-target))
-                      ;; Phase shift due to propagation angle for each antenna
-                      ;; additional spatial phase = k * d_antenna
-                      ;; d_antenna = ant * element-spacing * sin(angle),
-                      ;; but strictly it’s the projection along the wavefront:
-                      (let ((spatial-phase (* wave-number
-                                              ant
-                                              element-spacing
-                                              (sin angle))))
-                        ;; The total phase = TX-chirp-phase(delayed) + spatial
-                        (let ((phase-total (+ tx-phase-target spatial-phase)))
-                          (incf sum-of-targets
-                                ;; amplitude * e^{j·(phase_total)}
-                                (complex
-                                 (* amplitude (cos phase-total))
-                                 (* amplitude (sin phase-total)))))))))))
-            ;; Add sum-of-targets to the baseband reference. One might
-            ;; also factor out the reference chirp’s own baseband mixing
-            ;; (i.e., multiply by exp(-j·tx-phase)), depending on the
-            ;; modeling approach. For demonstration, we omit that step
-            ;; or you can uncomment the next two lines:
-
-            ;; (let ((ref-mix (exp #C(0d0 -1d0 * tx-phase))))
-            ;;   (setf sum-of-targets (* sum-of-targets ref-mix)))
-
-            ;; Store in the array
-            (setf (aref rx-array ant n) sum-of-targets)))))
-
-    rx-array))
-
-#|
-CL-USER> (defvar r (cl-radar.gen:simulate-fmcw-returns '((20.0 -15.0 10.0) (10.0 25.0 6.0)) :element-spacing 0.03 :carrier-freq 10000000000 :bandwidth 1000000000 :chirp-time 0.1 :sample-rate 48000))
-R
-CL-USER> (array-dimensions r)
-(4 4800)
-|#
-
-;;;; without reference phase and unused vars:
-@export
-(defun simulate-fmcw-returns (targets
-                              &key
-                              (num-antennas 4)
-                              (element-spacing 0.5d0)        ; [m]
-                              (carrier-freq 24.125e9)        ; [Hz]
-                              (bandwidth 200e6)              ; [Hz]
-                              (chirp-time 1e-3)              ; [s]
-                              (sample-rate 2e6)              ; [samples/s]
-                              (speed-of-light 3.0d8))
-  "
-SIMULATE-FMCW-RETURNS computes a 2D array of complex samples representing
-the received FMCW signals at each of several antennas in a linear array.
-
-ARGUMENTS:
-  - TARGETS: A list of (distance angle amplitude) for each target.
-      distance -> [meters]
-      angle    -> [radians] (broadside = 0.0)
-      amplitude-> dimensionless scaling factor for the echo
-
-KEY PARAMETERS:
-  - NUM-ANTENNAS: Number of elements in the linear array
-  - ELEMENT-SPACING: Spacing (in meters) between adjacent array elements
-  - CARRIER-FREQ: Center frequency f0 of the chirp in Hz
-  - BANDWIDTH: Frequency sweep range in Hz
-  - CHIRP-TIME: Duration of one FMCW chirp in seconds
-  - SAMPLE-RATE: Baseband sampling rate in samples/sec
-  - SPEED-OF-LIGHT: Speed of wave propagation (m/s); defaults to 3e8
-
-RETURNS:
-  A 2D array of complex-double-float. Dimensions:
-    (num-antennas x number-of-time-samples)
-"
-  (let* ((num-samples (round (* chirp-time sample-rate)))
-         ;; Allocate a 2D array: (antenna-index, time-sample-index)
-         (rx-array (make-array (list num-antennas num-samples)
-                               ;;:element-type 'complex-double-float
-                               :initial-element #C(0.0d0 0.0d0)))
-         ;; Precompute some constants
-         (dt (/ 1d0 sample-rate))       ; time step between samples
-         (chirp-slope (/ bandwidth chirp-time))  ; Hz per second
-         (two-pi 6.283185307179586d0)
-         (lambda (/ speed-of-light carrier-freq)) ; approximate wavelength
-         (wave-number (/ (* 2d0 pi) lambda)))      ; wave number = 2π/λ
-
-    (dotimes (n num-samples)
-      (let ((tm (* n dt)))  ;; current time for this sample
-        ;; Loop over each antenna element
-        (dotimes (ant num-antennas)
-          (let ((sum-of-targets 0d0))  ;; accumulate complex returns
-            (dolist (tg targets)
-              (destructuring-bind (distance angle amplitude) tg
-                ;; Round-trip delay for the target (distance -> 2R/c)
-                (let* ((delay (/ (* 2d0 distance) speed-of-light))
-                       (time-delay (- tm delay)))
-                  (when (plusp time-delay)
-                    ;; The transmit phase at the delayed time
-                    ;; φ_delayed(t) = 2π [f0·(t-τ) + 0.5·chirp-slope·(t-τ)^2]
-                    (let* ((tx-phase-target
-                             (* two-pi
-                                (+ (* carrier-freq time-delay)
-                                   (* 0.5 chirp-slope time-delay time-delay))))
-                           ;; Additional spatial phase for each antenna
-                           (spatial-phase
-                             (* wave-number ant element-spacing (sin angle))))
-                      (incf sum-of-targets
-                            (complex
-                             (* amplitude (cos (+ tx-phase-target spatial-phase)))
-                             (* amplitude (sin (+ tx-phase-target spatial-phase))))))))))
-            (setf (aref rx-array ant n) sum-of-targets)))))
-    rx-array))
-|#
-
 #|
 CL-USER> (let ((antenna1 (vector #C(0 0) #C(1 1) #C(2 2)))
 (antenna2 (vector #C(0 0) #C(1 2) #C(2 3)))
@@ -531,3 +195,323 @@ Returns:
                    (+ (* (- 1 alpha) (imagpart val1))
                       (* alpha (imagpart val2)))))))))
     result))
+
+
+;;;;;;;;;
+
+;;;; ================================================================
+;;;; Minimal Matrix Utilities
+;;;; ================================================================
+
+(defun make-matrix (rows cols &optional (initial-value 0.0))
+  "Create a 2D array of size ROWS x COLS, filled with INITIAL-VALUE."
+  (make-array (list rows cols) :element-type 'double-float
+                              :initial-element (coerce initial-value 'double-float)))
+
+(defun matrix-rows (mat)
+  (array-dimension mat 0))
+
+(defun matrix-cols (mat)
+  (array-dimension mat 1))
+
+(defun matrix-transpose (mat)
+  "Return the transpose of MAT."
+  (let* ((r (matrix-rows mat))
+         (c (matrix-cols mat))
+         (res (make-matrix c r)))
+    (dotimes (i r)
+      (dotimes (j c)
+        (setf (aref res j i) (aref mat i j))))
+    res))
+
+(defun matrix-multiply (a b)
+  "Return the product A*B. A is (r x n), B is (n x c)."
+  (let* ((r (matrix-rows a))
+         (n (matrix-cols a))
+         (n2 (matrix-rows b))
+         (c (matrix-cols b)))
+    (unless (= n n2)
+      (error "Incompatible dimensions in matrix-multiply: (~A x ~A) * (~A x ~A)"
+             r n n2 c))
+    (let ((result (make-matrix r c 0.0)))
+      (dotimes (i r)
+        (dotimes (j c)
+          (let ((sum 0.0))
+            (dotimes (k n)
+              (incf sum (* (aref a i k) (aref b k j))))
+            (setf (aref result i j) sum))))
+      result)))
+
+(defun matrix-scale (mat scalar)
+  "Scale every entry of MAT by SCALAR in place."
+  (dotimes (i (matrix-rows mat))
+    (dotimes (j (matrix-cols mat))
+      (setf (aref mat i j) (* scalar (aref mat i j)))))
+  mat)
+
+(defun matrix-add! (a b)
+  "In-place add B into A (A += B). Returns A."
+  (let* ((r (matrix-rows a))
+         (c (matrix-cols a)))
+    (unless (and (= r (matrix-rows b))
+                 (= c (matrix-cols b)))
+      (error "Incompatible dimensions in matrix-add!: (~A x ~A) + (~A x ~A)"
+             r c (matrix-rows b) (matrix-cols b)))
+    (dotimes (i r)
+      (dotimes (j c)
+        (incf (aref a i j) (aref b i j))))
+    a))
+
+(defun copy-matrix (mat)
+  "Return a copy of MAT."
+  (let* ((r (matrix-rows mat))
+         (c (matrix-cols mat))
+         (res (make-matrix r c)))
+    (dotimes (i r)
+      (dotimes (j c)
+        (setf (aref res i j) (aref mat i j))))
+    res))
+
+(defun identity-matrix (n)
+  "Return an N x N identity matrix."
+  (let ((id (make-matrix n n 0d0)))
+    (dotimes (i n)
+      (setf (aref id i i) 1d0))
+    id))
+
+
+;;;; ================================================================
+;;;; Jacobi Eigen-decomposition for real symmetric matrices
+;;;; ================================================================
+(defun jacobi-rotate (a p q angle)
+  "Perform a Jacobi rotation on matrix A in rows/cols p and q with ANGLE."
+  (let* ((cos-angle (cos angle))
+         (sin-angle (sin angle))
+         (app (aref a p p))
+         (aqq (aref a q q))
+         (apq (aref a p q))
+         ;; Diagonal elements after rotation
+         (app-new (- (* app cos-angle cos-angle)
+                     (* 2 apq sin-angle cos-angle)
+                     (* aqq sin-angle sin-angle)))
+         (aqq-new (- (* aqq cos-angle cos-angle)
+                     (* -2 apq sin-angle cos-angle)
+                     (* app sin-angle sin-angle))))
+    ;; Update diagonal elements
+    (setf (aref a p p) app-new)
+    (setf (aref a q q) aqq-new)
+    ;; Off-diagonal becomes 0
+    (setf (aref a p q) 0d0)
+    (setf (aref a q p) 0d0)
+
+    ;; Update other elements
+    (dotimes (r (matrix-rows a))
+      (unless (or (= r p) (= r q))
+        (let ((arp (aref a r p))
+              (arq (aref a r q)))
+          (setf (aref a r p)
+                (- (* arp cos-angle) (* arq sin-angle)))
+          (setf (aref a p r) (aref a r p)) ;; symmetric
+
+          (setf (aref a r q)
+                (+ (* arp sin-angle) (* arq cos-angle)))
+          (setf (aref a q r) (aref a r q))))))
+  a)
+
+(defun jacobi-eigen-decomposition (mat &key (max-iter 1000) (tol 1e-10))
+  "Compute eigenvalues and eigenvectors of real symmetric MAT using Jacobi.
+Returns a list (evalues evectors), where
+ evalues is a list of eigenvalues,
+ evectors is a matrix whose columns are the corresponding eigenvectors."
+  (let* ((n (matrix-rows mat))
+         (a (copy-matrix mat))   ;; we'll destroy 'a' in-place
+         (v (identity-matrix n)))
+    (unless (= n (matrix-cols a))
+      (error "Matrix for Jacobi must be square."))
+    (loop
+      for iter-count upfrom 1 to max-iter do
+        (let ((p -1)
+              (q -1)
+              (max-offdiag 0.0))
+          ;; Find largest off-diagonal element
+          (dotimes (i n)
+            (dotimes (j i)
+              (let ((val (abs (aref a i j))))
+                (when (> val max-offdiag)
+                  (setf max-offdiag val
+                        p i
+                        q j)))))
+          (if (< max-offdiag tol)
+              (return))  ;; Converged
+
+          ;; Compute the Jacobi rotation angle
+          (let ((app (aref a p p))
+                (aqq (aref a q q))
+                (apq (aref a p q)))
+            (let ((theta (/ (- aqq app)
+                            (* 2 apq))))
+              (let ((tm (if (> theta 0)
+                           (/ 1.0 (+ (abs theta) (sqrt (+ 1.0 (* theta theta)))))
+                           (/ -1.0 (+ (abs theta) (sqrt (+ 1.0 (* theta theta)))))))
+                    (angle 0.0))
+                (setf angle (atan tm))
+                ;; Rotate 'a'
+                (jacobi-rotate a p q angle)
+                ;; Update eigenvector matrix 'v'
+                (dotimes (r n)
+                  (let ((vrp (aref v r p))
+                        (vrq (aref v r q)))
+                    (setf (aref v r p) (- (* vrp (cos angle))
+                                          (* vrq (sin angle))))
+                    (setf (aref v r q) (+ (* vrp (sin angle))
+                                          (* vrq (cos angle)))))))))))
+    ;; Extract eigenvalues and reorder
+    (let ((evalues (make-array n :initial-element 0.0))
+          (evectors v))
+      (dotimes (i n)
+        (setf (aref evalues i) (aref a i i)))
+
+      ;; We want to return them sorted by descending eigenvalue.
+      (let ((idxs (sort (loop for i from 0 to (1- n) collect i)
+                         #'>
+                         :key (lambda (i) (aref evalues i)))))
+        (values
+         (map 'list (lambda (i) (aref evalues i)) idxs)
+         (let ((sorted-v (make-matrix n n)))
+           (dotimes (col n)
+             (dotimes (row n)
+               (setf (aref sorted-v row col) (aref evectors row (nth col idxs)))))
+           sorted-v))))))
+
+
+;;;; ================================================================
+;;;; MUSIC Algorithm
+;;;; ================================================================
+(defun build-data-matrix (samples m)
+  "Build an M x (N - M + 1) data matrix from 1D SAMPLES,
+   where each row is a shifted version of the data."
+  (let* ((n (length samples))
+         (num-cols (- n m 1)))
+    (when (< num-cols 1)
+      (error "Not enough samples ~A to build data matrix with dimension M=~A"
+             n m))
+    (let ((X (make-matrix m num-cols)))
+      (dotimes (col num-cols)
+        (dotimes (row m)
+          (setf (aref X row col)
+                (elt samples (+ col row)))))  ;; shift
+      X)))
+
+(defun correlation-matrix (samples m)
+  "Compute MxM correlation matrix from SAMPLES using a sliding window of size M."
+  (let* ((X (build-data-matrix samples m))
+         (Xt (matrix-transpose X))
+         ;; R = (1/(num-cols)) * X * X^T
+         (num-cols (matrix-cols X)))
+    (let ((R (matrix-multiply X Xt)))
+      (matrix-scale R (/ 1.0 num-cols))
+      R)))
+
+
+(defun compute-pseudospectrum (noise-subspace freq sample-rate)
+  "Compute the MUSIC pseudospectrum for a given frequency FREQ (Hz).
+   NOISE-SUBSPACE is an M x (M-K) matrix (the eigenvectors corresponding to
+   the smallest M-K eigenvalues)."
+  ;; We treat the steering vector as complex.  For real data, you can
+  ;; consider an alternate approach or simply treat it as complex with
+  ;; zero imaginary part in the data.
+  (let* ((m (matrix-rows noise-subspace))
+         (steer (make-array m :initial-element #C(0.0d0 0.0d0)))
+         (omega (* 2d0 pi freq (/ 1.0 sample-rate))))
+    (dotimes (i m)
+      ;; a(i) = e^(-j * omega * i)
+      (setf (aref steer i)
+            (exp (* #C(0.0 -1.0) omega i))))
+    ;; Compute a^H * E_n
+    ;; We'll do it by explicit multiplication:
+    (let ((aHEn (make-array (matrix-cols noise-subspace)
+                            :initial-element #C(0d0 0d0))))
+      (dotimes (col (matrix-cols noise-subspace))
+        (dotimes (row m)
+          (incf (aref aHEn col)
+                (* (conjugate (aref steer row))
+                   (aref noise-subspace row col)))))
+      ;; Now compute (a^H * E_n) (E_n^H * a) = |a^H E_n|^2
+      ;; E_n^H * a would be the complex conjugate of aHEn
+      (let ((mag-sq 0d0))
+        (dotimes (col2 (matrix-cols noise-subspace))
+          (let ((val (aref aHEn col2)))
+            (incf mag-sq (* val (conjugate val)))))
+        ;; P(f) = 1 / mag-sq
+        (if (zerop mag-sq)
+            1e15  ; guard against divide by zero
+            (/ 1d0 mag-sq))))))
+
+(defun find-k-largest-local-maxima (values k)
+  "Return indices of the K largest local maxima in VALUES (1D array).
+   A local maximum is defined in a simple sense: value[i] > value[i-1] and value[i] > value[i+1].
+   We do a naive approach here; you can refine as needed."
+  (let (candidates)
+    (dotimes (i (- (length values) 2))
+      (let ((i1 (1+ i)))
+        (when (and (> (aref values i1) (aref values i))
+                   (> (aref values i1) (aref values (+ i1 1))))
+          (push (cons (aref values i1) i1) candidates))))
+    ;; Now sort candidates by the pseudospectrum value, descending
+    (setf candidates (sort candidates #'> :key #'car))
+    ;; Return the top K indices
+    (mapcar #'cdr (subseq candidates 0 (min k (length candidates))))))
+
+(defun music-frequencies (samples sample-rate k
+                                  &key (subspace-size nil)
+                                       (num-freq-points 1024))
+  "Apply the MUSIC algorithm to real 1D SAMPLES at SAMPLE-RATE,
+   searching for K signals. Return a list of (peak-value frequency)."
+  (format t "samples is type: ~a~%" (type-of samples))
+  (let* ((n (length samples))
+         ;; If not specified, choose subspace-size somewhat larger than k.
+         ;; The user might tune this.  Must be <= n/2 realistically.
+         (m (or subspace-size
+                (max (+ k 5) (floor (/ n 2)))))
+         ;; 1) Build correlation matrix
+         (R (correlation-matrix samples m))
+         ;; 2) Eigen-decompose R
+         (evalues nil)
+         (evectors nil) ;; multiple values (???)
+         (evalues+evectors (jacobi-eigen-decomposition R))) ;; ???
+    (setf evalues (first evalues+evectors)) ;; ??? insane
+    (setf evectors (second evalues+evectors))
+    ;; evalues is sorted in descending order, evectors has columns of sorted eigenvectors
+    ;; 3) Signal subspace dimension = k => noise subspace dimension = m - k
+    ;;    The last (m-k) columns of evectors correspond to the smallest eigenvalues => noise subspace
+    (let ((noise-subspace (make-matrix m (- m k))))
+      (dotimes (col (- m k))
+        (dotimes (row m)
+          (setf (aref noise-subspace row col)
+                (aref evectors row (+ k col)))))  ;; columns after k
+      ;; 4) Compute MUSIC pseudospectrum over a frequency grid
+      (let ((p (make-array num-freq-points :element-type 'double-float)))
+        (dotimes (i num-freq-points)
+          (let ((freq (* (/ (float i) num-freq-points) (/ sample-rate 2.0))))
+            (setf (aref p i)
+                  (coerce (compute-pseudospectrum noise-subspace freq sample-rate)
+                          'double-float))))
+        ;; 5) Find the top K peaks
+        (let ((peak-indices (find-k-largest-local-maxima p k))
+              (results '()))
+          (dolist (idx peak-indices)
+            (let* ((freq (* (/ (float idx) num-freq-points) (/ sample-rate 2.0)))
+                   (val (aref p idx)))
+              (push (list val freq) results)))
+          ;; Sort final results by descending peak value
+          (sort results #'> :key #'first))))))
+
+;; Example top-level function that just returns the peaks
+(defun estimate-music-peaks (samples sample-rate k
+                                     &key (subspace-size nil)
+                                          (num-freq-points 1024))
+  "Return the list of (peak-magnitude frequency-Hz) for the top K signals
+   estimated by MUSIC from SAMPLES at SAMPLE-RATE."
+  (music-frequencies samples sample-rate k
+                     :subspace-size subspace-size
+                     :num-freq-points num-freq-points))

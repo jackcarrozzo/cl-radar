@@ -350,7 +350,6 @@ CL-USER>
                                                 (delay-s 0.1) (marker-p t) (log-p t))
   (dotimes (i max-loops-thru)
     (let ((curr-slice 0))
-
       (loop while (< curr-slice (- (length fft-slices-list) slices-at-once))
             do
                (let ((these-slices
@@ -562,10 +561,12 @@ CL-USER>
             (filter-wack-edges
              (if ac-trig-p
                  (find-ac-edges cl-radar.audio:*last-left-samps*)
-                 (find-edges cl-radar.audio:*last-left-samps*)))))
+                 (find-edges cl-radar.audio:*last-left-samps*)))
+            :start-offset 0 :end-offset 200))
          (avg-trig-len (getf *last-stats* :avg-offset-trig-period))
          (ar-sample-len (cl-radar.math:next-power-of-two avg-trig-len))
-         (sample-ar (make-array ar-sample-len :initial-element 0.0d0)))
+         (sample-ar (make-array ar-sample-len :initial-element 0.0d0))
+         (slices nil))
     (when debug-p
       (format t "--- read-and-slice-stereo-wav: ~a edges in, avg trigger len is ~a, using ar len ~a.~%"
               (length trigger-edges) avg-trig-len ar-sample-len))
@@ -578,6 +579,8 @@ CL-USER>
     ;; bordeaux-fft does allow you do pull from a large ar by center and len,
     ;;   but that wont let us pad
 
+    (setf *last-timedomain-slices* nil)
+
     (if single-out-p ;; TODO: there must be a prettier way to represent this
         ;; define result ar outside loop and bring it each time
         (let ((result-ar (make-array (/ ar-sample-len 2) :initial-element 0.0d0)))
@@ -586,10 +589,12 @@ CL-USER>
                    (let* ((this-edge (nth n trigger-edges))
                           (this-start (first this-edge))
                           (this-end (rest this-edge)))
-                     (cl-radar.math:array-copy-into
-                      cl-radar.audio:*last-right-samps*
-                      this-start this-end
-                      sample-ar)
+                     (push
+                      (cl-radar.math:array-copy-into
+                       cl-radar.audio:*last-right-samps*
+                       this-start this-end
+                       sample-ar)
+                      slices)
                      (cl-radar.math:dc-center-slice sample-ar)
                      (cl-radar.math:array-set-range
                       sample-ar this-end ar-sample-len 0.0)
@@ -607,10 +612,12 @@ CL-USER>
                           (this-start (first this-edge))
                           (this-end (rest this-edge))
                           (result-ar (make-array (/ ar-sample-len 2) :initial-element 0.0d0)))
-                     (cl-radar.math:array-copy-into
-                      cl-radar.audio:*last-right-samps*
-                      this-start this-end
-                      sample-ar)
+                     (push
+                      (cl-radar.math:array-copy-into
+                       cl-radar.audio:*last-right-samps*
+                       this-start this-end
+                       sample-ar)
+                      slices)
                      (cl-radar.math:dc-center-slice sample-ar)
                      (cl-radar.math:array-set-range
                       sample-ar this-end ar-sample-len 0.0)
@@ -619,6 +626,8 @@ CL-USER>
                               sample-ar (/ ar-sample-len 2) ar-sample-len)))
                        (cl-radar.math:complex-ar-mags fft-r result-ar nil)
                        (push result-ar result-ar-list))))
+          (setf *last-timedomain-slices*
+                (nreverse slices))
           (setf *last-fft-slices*
                 result-ar-list)))))
 
