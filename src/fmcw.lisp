@@ -292,17 +292,20 @@ CL-USER>
 @export
 (defun format-signal-and-trigger-frame (edge-list trigger-samples signal-samples-ars-list from-i to-i)
   (let ((relevant-edges (filter-edges-by-bound edge-list from-i to-i))
-        ;;(trig-ar (subseq trigger-samples from-i to-i)) TODO:
-        (trig-ar (subseq trigger-samples 0 (- to-i from-i)))
+        (trig-ar (subseq trigger-samples from-i to-i)) ;; TODO:
+        ;;(trig-ar (subseq trigger-samples 0 (- to-i from-i)))
         (signal-ars (mapcar
                      (lambda (s-ar)
-                       ;;(subseq s-ar from-i to-i) TODO:
-                       (subseq s-ar 0 (- to-i from-i)))
+                       (subseq s-ar from-i to-i) ;;TODO:
+                       ;;(subseq s-ar 0 (- to-i from-i))
+                       )
                      signal-samples-ars-list)))
-    (format t "-- trig 1 2 3: ~a~%"
-            (subseq trigger-samples 0 3))
-    (format t "-- trig 1 2 3: ~a~%"
-            (subseq trigger-samples (- from-i 500) (- (+ from-i 3) 500)))
+
+    ;; wtf TODO:
+    ;;(format t "-- trig 1 2 3: ~a~%"
+    ;;        (subseq trigger-samples 0 3))
+    ;;(format t "-- trig 1 2 3: ~a~%"
+    ;;        (subseq trigger-samples (- from-i 500) (- (+ from-i 3) 500)))
 
     (cl-json:encode-json-plist-to-string
      `(:n ,(incf *n*)
@@ -403,8 +406,12 @@ CL-USER>
                    (incf curr-slice slices-at-once)))
                  (when (and include-waves-every
                             (= 0 (mod curr-slice include-waves-every)))
-                   (let* ((to-i (1- (array-dimension cl-radar.audio:*last-left-samps* 0)))
-                          (from-i (- to-i wave-samples-len)))
+                   (let* (
+                          ;;(to-i (1- (array-dimension cl-radar.audio:*last-left-samps* 0))) ;; at end
+                          ;;(from-i (- to-i wave-samples-len))
+                          (from-i 0)
+                          (to-i (+ from-i wave-samples-len))
+                          )
                      (cl-radar.websocket:send-to-all-clients
                       (format-signal-and-trigger-frame
                        *last-fmcw-edges* cl-radar.audio:*last-left-samps*
