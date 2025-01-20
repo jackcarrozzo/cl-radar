@@ -5,25 +5,121 @@
 (cl-syntax:use-syntax :annot)
 
 
+;;;;;;;; testing utils
+
+@export
+(defun filter-testing-comb-ar ()
+  (fill-signal-ar-sines
+   (loop for f from 250 upto 10000 by 250 collecting f)))
+
+#|
+(progn (setf gg (cl-radar.filter::filter-testing-comb-ar)) 7)
+(progn (setf g2 (bordeaux-fft:windowed-fft gg 256 512)) 7)
+(progn (setf g3 (cl-radar.math:complex-ar-mags g2 (make-array 256 :initial-element 0.0d0))) 7)
+(vgplot:plot g3)
+|#
+
+(defvar *last-comb-ar* nil)
+(defvar *last-comb-fft* nil)
+
+@export
+(defun comb-test-wrapper ()
+  (vgplot:plot
+   (setf *last-comb-fft*
+         (cl-radar.math:complex-ar-mags
+          (bordeaux-fft:windowed-fft
+           (setf *last-comb-ar*
+                 (filter-testing-comb-ar))
+           256 512)
+          (make-array 256 :initial-element 0.0d0)))))
+
+(defvar *last-filtered-ar* nil)
+
+(defun filter1 (&optional (in-ar *last-comb-ar*))
+  (let ((hpf (make-fir-highpass-filter 48000.0 4000.0 :order 51))
+        (r (make-array (array-dimension in-ar 0) :initial-element 0.0d0)))
+    (dotimes (i (array-dimension in-ar 0))
+      (setf (aref r i)
+            (funcall hpf (aref in-ar i))))
+    (setf *last-filtered-ar*
+          r)))
+
+#|
+(progn (setf f1 (cl-radar.filter::filter1)) 7)
+(vgplot:plot cl-radar.filter::*last-comb-ar*)
+(vgplot:plot f1)
+
+(setf g2 (bordeaux-fft:windowed-fft f1 256 512))
+(progn (setf g3 (cl-radar.math:complex-ar-mags g2 (make-array 256 :initial-element 0.0d0))) 7)
+(vgplot:plot g3)
+|#
+
+(defvar *last-filter-fft* nil)
+
+(defun run-filter-fft ()
+  (vgplot:plot
+   (setf *last-filter-fft*
+         (cl-radar.math:complex-ar-mags
+          (bordeaux-fft:windowed-fft
+           (filter1
+            (filter-testing-comb-ar))
+           256 512)
+          (make-array 256 :initial-element 0.0d0)))))
+
+;; broken for list-arg freq-mag-list members TODO:
+@export
+(defun fill-signal-ar-sines (freq-mag-list
+                             &key (n-samples 512)
+                               (sample-rate 48000)
+                               (debug-p t))
+  (let ((r (make-array n-samples :initial-element 0.0d0)))
+    (loop for f-mag in freq-mag-list
+           do
+              (let ((arg-type (type-of f-mag))
+                    (this-f 1000.0)
+                    (this-mag 1.0))
+                (cond
+                  ((or (equal arg-type 'single-float) ;; if its just a number
+                       (equal arg-type 'double-float)
+                       (equal (first arg-type) 'integer))
+                   (setf this-f f-mag))
+                  ((eql 'consff arg-type)             ;; if arg is a list
+                   (format t "-- here.~%")
+                   (setf this-f (or (first f-mag) t))
+                   (setf this-mag (second f-mag)))
+                  (t
+                   (format t "-- unknown freq-mag-list item type, skipping: ~a, item: ~a~%"
+                           arg-type f-mag)
+                   (setf this-f nil)))
+                (when this-f
+                  (when debug-p
+                    (format t "-- adding sine of f ~a, amplitude ~a.~%"
+                            this-f this-mag))
+
+                  (setf cl-radar.wavegen::*phase* 0.0) ;; TODO:
+
+                  (dotimes (i n-samples)
+                    (incf (aref r i)
+                          (cl-radar.wavegen:sines-get-next
+                           sample-rate this-f this-mag))))))
+    r))
+
+
 
 ;;; FIR highpass real
 
-;;; Helper function to generate high-pass coefficients using
-;;; the windowed-sinc (spectral inversion) approach with a Hamming window.
+;;; windowed-sinc (spectral inversion) approach with hamming window
 @export
 (defun fir-highpass-coefficients (sample-rate cutoff &key (order 101))
-  "Compute FIR high-pass filter coefficients of length ORDER,
-   given SAMPLE-RATE and CUTOFF frequency in Hz.
-   Uses a Hamming window by default."
   (let* ((coeffs (make-array order :initial-element 0.0))
-         ;; Midpoint index (for linear-phase symmetry)
+         ;; midpoint index (for linear-phase symmetry)
          (alpha (/ (float (1- order)) 2.0))
-         ;; Normalized angular cutoff frequency (in radians/sample)
+         ;; normalized angular cutoff frequency (in radians/sample)
          (wc (* 2.0 pi (/ cutoff sample-rate))))
 
     (dotimes (n order)
       (let* ((m (- n alpha))
-             ;; Ideal high-pass = sinc(pi*m) - sinc(wc*m),
+             ;; ideal high-pass = sinc(pi*m) - sinc(wc*m),
              ;; with the special case at m=0
              (ideal
                (cond
@@ -35,32 +131,25 @@
                     (- (sin (* pi m))
                        (sin (* wc m)))
                     (* pi m)))))
-             ;; Hamming window:
+             ;; hamming window:
              ;; w[n] = 0.54 - 0.46 cos(2*pi*n/(order-1))
              (w (let ((ratio (/ n (float (1- order)))))
                   (- 0.54
                      (* 0.46 (cos (* 2.0 pi ratio))))))
              (val (* ideal w)))
         (setf (aref coeffs n) val)))
-
-    ;; (Optional) Could normalize or adjust gain if desired.
-
     coeffs))
 
-;;; Main function that returns a closure implementing the FIR filter.
+;; returns a closure containing the filter
 @export
 (defun make-fir-highpass-filter (sample-rate cutoff
                                 &key (order 101))
-  "Create a high-pass FIR filter closure, given SAMPLE-RATE and CUTOFF (Hz).
-   ORDER is the number of coefficients/taps in the FIR filter.
-   Returns a function that takes one sample at a time and returns the filtered sample."
   (let* ((coeffs (fir-highpass-coefficients sample-rate cutoff :order order))
-         ;; Internal delay line (circular buffer) for FIR state
+         ;; FIR state delay line (crb)
          (state  (make-array order :initial-element 0.0))
          (pos    0))
     (lambda (sample)
-      "Call this closure with successive samples to get filtered outputs."
-      ;; Insert the newest sample into the circular buffer
+      ;; newest sample into the crb
       (setf (aref state pos) sample)
       (incf pos)
       (when (>= pos order)
@@ -77,27 +166,16 @@
         acc))))
 
 (defun fir-ex ()
-  ;; Create a filter with default order = 101 taps,
-  ;; sample-rate = 48000 Hz, cutoff = 1000 Hz
   (let ((my-hpf (make-fir-highpass-filter 48000.0 1000.0 :order 101)))
-    ;; Filter some samples:
     (dotimes (i 10)
-      (format t "~&Input=1.0 => Output=~F" (funcall my-hpf 1.0)))
-    ;; ...
-    ))
+      (format t "~&input=1.0 => output=~F" (funcall my-hpf 1.0)))))
 
 
 ;;;;; FIR highpas complex
 
+;; TODO: same as above? real coefs for both filter types
 @export
 (defun fir-highpass-coefficients-complex (sample-rate cutoff &key (order 101))
-  "Compute real FIR high-pass filter coefficients of length ORDER,
-   for use with complex input. The design is identical to the real version,
-   but we return real-valued coefficients that you can apply to complex samples.
-
-   sample-rate : float
-   cutoff      : float
-   order       : integer (number of taps)"
   (let* ((coeffs (make-array order :initial-element 0.0))
          (alpha (/ (float (1- order)) 2.0))
          (wc (* 2.0 pi (/ cutoff sample-rate))))  ;; normalized rad freq
@@ -113,7 +191,7 @@
                         (- (sin (* pi m))
                            (sin (* wc m)))
                         (* pi m)))))
-             ;; Hamming window
+             ;; hamming window
              (w (let ((ratio (/ n (float (1- order)))))
                   (- 0.54
                      (* 0.46 (cos (* 2.0 pi ratio))))))
@@ -124,31 +202,23 @@
 @export
 (defun make-fir-highpass-filter-complex (sample-rate cutoff
                                      &key (order 101))
-  "Return a closure implementing an FIR high-pass filter
-   for complex input/output, with real-valued coefficients.
-
-   sample-rate : float
-   cutoff      : float
-   order       : integer (number of taps)."
   (let* ((coeffs (fir-highpass-coefficients-complex sample-rate cutoff :order order))
-         ;; State buffer now holds COMPLEX samples
          (state  (make-array order :initial-element #C(0d0 0d0)))
          (pos    0))
     (lambda (sample)
-      "Filter a single complex sample, returning a complex result."
-      ;; Insert the newest complex sample in circular buffer
+      ;; complex sample into circular buffer
       (setf (aref state pos) sample)
       (incf pos)
       (when (>= pos order)
         (setf pos 0))
-      ;; Convolution
+      ;; convolution
       (let ((acc #C(0d0 0d0))
             (idx pos))
         (dotimes (i order)
           (decf idx)
           (when (< idx 0)
             (setf idx (1- order)))
-          ;; Multiply the real coefficient by the complex sample,
+          ;; multiply the real coefficient by the complex sample,
           ;; then add to the complex accumulator
           (setf acc (complex-plus acc
                                   (complex-times (aref coeffs i)
@@ -156,19 +226,16 @@
         acc))))
 
 ;; TODO: move to math
-;;; Helper complex arithmetic macros/functions for clarity (optional):
+
 (defun complex-plus (z1 z2)
   (complex (+ (realpart z1) (realpart z2))
            (+ (imagpart z1) (imagpart z2))))
 
 (defun complex-times (real-coeff z)
-  "Multiply a REAL coefficient by a complex number Z."
   (complex (* real-coeff (realpart z))
            (* real-coeff (imagpart z))))
 
-;; Helper functions again (or inline them):
 (defun complex-minus (z1 z2)
-  "z1 - z2."
   (complex (- (realpart z1) (realpart z2))
            (- (imagpart z1) (imagpart z2))))
 
@@ -177,46 +244,37 @@
 ;; standard 2nd‐order “RBJ cookbook” highpass design (sometimes referred to as a “Butterworth‐style” or “Q=1/√2” approach)
 
 
-;;; 1) Coefficient generator for a 2nd-order RBJ "cookbook" highpass filter
+;;; 1) coefficient generator for a 2nd-order RBJ cookbook hpf
 
 @export
 (defun iir-biquad-highpass-coeffs (sample-rate cutoff &key (q (/ 1.0 (sqrt 2.0))))
-  "Compute 2nd-order IIR high-pass filter coefficients (RBJ cookbook).
-   Returns (b0 b1 b2 a1 a2), already normalized by a0.
-   Q defaults to 1/sqrt(2) for a Butterworth-like response."
+  "compute 2nd-order IIR high-pass filter coefficients (RBJ cookbook).
+   returns (b0 b1 b2 a1 a2), already normalized by a0.
+   Q defaults to 1/sqrt(2) for Butterworth-like response."
   (let* ((omega (* 2.0 pi (/ cutoff sample-rate)))  ; 2 * pi * (fc/fs)
          (cosw (cos omega))
          (sinw (sin omega))
          (alpha (/ sinw (* 2.0 q)))
 
-         ;; Biquad denominators
+         ;; biquad denominators
          (a0 (+ 1.0 alpha))
          (a1 (* -2.0 cosw))
          (a2 (- 1.0 alpha))
 
-         ;; Biquad numerators for high-pass
+         ;; biquad numerators for high-pass
          (b0 (/ (+ 1.0 cosw) 2.0))
          (b1 (- (+ 1.0 cosw)))
          (b2 (/ (+ 1.0 cosw) 2.0)))
 
-    ;; Normalize by a0
+    ;; normalize by a0
     (labels ((norm (x) (/ x a0)))
       (list (nth-value 0 (norm b0)) (norm b1) (norm b2)
             (norm a1) (norm a2)))))
 
-;;; 2) Returns a closure implementing the 2nd-order highpass filter
-
 @export
 (defun make-iir-highpass-filter (sample-rate cutoff
-                               &key (q (/ 1.0 (sqrt 2.0))))
-  "Create a 2nd-order IIR highpass filter closure using the RBJ cookbook method.
-   SAMPLE-RATE = sampling frequency in Hz
-   CUTOFF = desired highpass cutoff in Hz
-   ORDER = 2 (this argument is just for API similarity with the FIR version)
-   Q = resonance / damping factor (default = 1/sqrt(2) => Butterworth)
-
-   Returns a function that takes a single sample and returns the filtered sample."
-
+                                 &key (q (/ 1.0 (sqrt 2.0))))
+  ;; q = resonance / damping factor (default = 1/sqrt(2) => Butterworth)
   (multiple-value-bind (b0 b1 b2 a1 a2)
       (apply #'iir-biquad-highpass-coeffs sample-rate cutoff
              (list :q q))
@@ -239,19 +297,18 @@ caught WARNING:
     (check-type a2 number)
 
 
-    ;; State variables: x[n-1], x[n-2], y[n-1], y[n-2]
+    ;; state vars: x[n-1], x[n-2], y[n-1], y[n-2]
     (let ((x1 0.0)
           (x2 0.0)
           (y1 0.0)
           (y2 0.0))
       (lambda (x0)
-        "Call with one input sample at a time; returns the highpassed output."
         (let* ((y0 (+ (* b0 x0)
                       (* b1 x1)
                       (* b2 x2)
                       (- (* a1 y1))
                       (- (* a2 y2)))))
-          ;; Shift the states
+          ;; shift states
           (setf x2 x1
                 x1 x0
                 y2 y1
@@ -260,23 +317,17 @@ caught WARNING:
 
 
 (defun iir-ex ()
-  ;; Create a 2nd-order highpass filter with fc=1000 Hz, fs=48000 Hz, default Q.
-  ;; Then process a small number of samples:
-
-  (let ((hp (make-iir-highpass-filter 48000.0 1000.0)))
-    (format t "Processing some samples:~%")
+  (let ((hpf (make-iir-highpass-filter 48000.0 1000.0)))
+    (format t "processing samples:~%")
     (dolist (sample '(0.0 1.0 1.0 1.0 1.0 1.0))
-      (format t "~&Input=~F  ->  Output=~F" sample (funcall hp sample)))))
+      (format t "~&input=~a  ->  output=~a" sample (funcall hpf sample)))))
 
 ;;;;;;;;; IIR highpass complex
 
+;; TODO: also same as reals
 @export
 (defun iir-biquad-highpass-coeffs-complex (sample-rate cutoff
                                            &key (q (/ 1.0 (sqrt 2.0))))
-  "Compute 2nd-order RBJ cookbook HIGH-PASS coefficients (real),
-   suitable for filtering complex input.
-
-   Returns (b0 b1 b2 a1 a2), normalized by a0."
   (let* ((omega (* 2.0 pi (/ cutoff sample-rate)))
          (cosw (cos omega))
          (sinw (sin omega))
@@ -287,8 +338,7 @@ caught WARNING:
          (b0 (/ (+ 1.0 cosw) 2.0))
          (b1 (- (+ 1.0 cosw)))
          (b2 (/ (+ 1.0 cosw) 2.0)))
-
-    ;; Normalize by a0
+    ;; normalize by a0
     (labels ((norm (x) (/ x a0)))
       (list (norm b0) (norm b1) (norm b2)
             (norm a1) (norm a2)))))
@@ -296,13 +346,6 @@ caught WARNING:
 @export
 (defun make-iir-highpass-filter-complex (sample-rate cutoff
                                        &key (q (/ 1.0 (sqrt 2.0))))
-  "Create a 2nd-order IIR high-pass filter for COMPLEX input.
-   The underlying design is real-valued RBJ highpass with
-   Q = 1/sqrt(2) by default for a Butterworth-like slope.
-
-   Returns a closure that takes a single complex sample
-   and returns a complex output."
-
   (multiple-value-bind (b0 b1 b2 a1 a2)
       (apply #'iir-biquad-highpass-coeffs-complex sample-rate cutoff
              (append '() (list :q q)))
@@ -311,7 +354,6 @@ caught WARNING:
           (y1 #C(0d0 0d0))
           (y2 #C(0d0 0d0)))
       (lambda (x0)
-        "Call this closure with a complex sample; returns a complex output."
         ;; difference equation:
         ;; y0 = b0*x0 + b1*x1 + b2*x2 - a1*y1 - a2*y2
         (let ((y0 (complex-plus
@@ -323,7 +365,7 @@ caught WARNING:
                    (complex-minus
                     (complex-times a1 y1)
                     (complex-times a2 y2)))))
-          ;; Shift states
+          ;; shift states
           (setf x2 x1
                 x1 x0
                 y2 y1
@@ -333,20 +375,18 @@ caught WARNING:
 
 (defun complex-both-ex ()
 
-;;; Example usage for the FIR complex filter
-  (let ((fir-hp-complex
+  (let ((fir-hpf-complex
           (make-fir-highpass-filter-complex
            48000.0 1000.0 :order 11)))
-    (format t "FIR Complex filter test:~%")
+    (format t "FIR complex filter:~%")
     (dolist (in '(#C(1 0) #C(1 1) #C(0.5 -0.5) #C(-1 1) #C(0 0)))
-      (format t "~&In=~A => Out=~A"
-              in (funcall fir-hp-complex in))))
+      (format t "~&in=~a => out=~a"
+              in (funcall fir-hpf-complex in))))
 
-;;; Example usage for the IIR complex filter
-  (let ((iir-hp-complex
+  (let ((iir-hpf-complex
           (make-iir-highpass-filter-complex
            48000.0 1000.0 :q 0.7071)))
-    (format t "~%~%IIR Complex filter test:~%")
+    (format t "~%~%IIR complex filter:~%")
     (dolist (in '(#C(1 0) #C(1 1) #C(0.5 -0.5) #C(-1 1) #C(0 0)))
-      (format t "~&In=~A => Out=~A"
-              in (funcall iir-hp-complex in)))))
+      (format t "~&in=~a => out=~a"
+              in (funcall iir-hpf-complex in)))))

@@ -1,11 +1,9 @@
 read raw pcm, 24 bit
 
 
-
 - front end: dynamic waveform views, signals and trigger indication,
     colors and graph 0 dB should be consistent across slices / trailing mean,
     not set per-slice like currently (causes banding when peak shape changes between    bins)
-- websocket: kick periodic wave segment dumps into stream
 
 - wav: read n channels "at once"
 

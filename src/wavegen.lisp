@@ -47,22 +47,22 @@
 ;;  should have them return a closure for the wrapper to call
 
 @export
-(defun sines-get-next (&optional (sample-rate +s-r+) (freq +f+))
-  (let ((r (* *amplitude* (sin (* freq *phase*)))))
+(defun sines-get-next (&optional (sample-rate +s-r+) (freq +f+) (amplitude *amplitude*))
+  (let ((r (* amplitude (sin (* freq *phase*)))))
     (incf *phase* (* 2 pi (/ 1 sample-rate)))
     r))
 
 ;; ramp: a ramp 0.1s long is 0.1 * +s-r+ samples long
 ;;         and at ampl 0.1 goes from -0.05 to 0.05
 @export
-(defun ramp-get-next (&optional (sample-rate +s-r+) (freq +f+))
+(defun ramp-get-next (&optional (sample-rate +s-r+) (freq +f+) (amplitude *amplitude*))
   ;; TODO: this sucks
   (let* ((ramp-period (* 8.2 (/ 1.0 freq))) ;; the 10.0 is fixup to match scope
         ;;(ramp-len-samples (* ramp-period sample-rate))
-        (r (- (* *phase* (/ *amplitude* ramp-period)) (/ *amplitude* 2.0))))
+        (r (- (* *phase* (/ amplitude ramp-period)) (/ amplitude 2.0))))
 
     (incf *phase* (* 2 pi (/ 1 sample-rate)))
-    (when (> r *amplitude*) ;; TODO: wtf
+    (when (> r amplitude) ;; TODO: wtf
       (setf *phase* 0.0))
     r))
 
