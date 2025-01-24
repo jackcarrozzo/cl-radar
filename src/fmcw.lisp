@@ -416,8 +416,7 @@ CL-USER>
                       (format-signal-and-trigger-frame
                        *last-fmcw-edges* cl-radar.audio:*last-left-samps*
                        (list cl-radar.audio:*last-right-samps*)
-                       from-i to-i
-                       ))))
+                       from-i to-i))))
                  (sleep delay-s)))
       (when marker-p
         (cl-radar.websocket:send-to-all-clients
@@ -597,6 +596,10 @@ CL-USER>
       )
      fft-ar))
 
+(defvar *last-trigger-samples-raw* nil)
+(defvar *last-trigger-samples-filtered* nil)
+(defvar *last-trigger-padded* nil)
+
 ;; this is the good new prefered method since it uses a constant ar size chosen at start
 ;;   (obv wont work for variable trigger timing)
 @export
@@ -668,15 +671,22 @@ CL-USER>
                           (this-end (rest this-edge))
                           (result-ar (make-array (/ ar-sample-len 2) :initial-element 0.0d0))
                           ;;(result-ar (make-array ar-sample-len :initial-element 0.0d0))
-                          (samples-actual-ar (subseq cl-radar.audio:*last-right-samps* this-start this-end)))
+                          (samples-actual-ar
+                            (subseq cl-radar.audio:*last-right-samps* this-start this-end)))
                      ;;(format t "-- this trig period is from ~a to ~a, ~a samples, ar ~a.~%"
                      ;;        this-start this-end (- this-end this-start)
                      ;;        (array-dimensions test-ar))
                      ;;(setf cl-user::*a* test-ar)
                      ;;(vgplot:plot (nth 300 cl-radar.fmcw::*last-timedomain-slices*))
 
+                     (setf *last-trigger-samples-raw*
+                           (alexandria:copy-array samples-actual-ar))
+
                      ;; make sure to center slice before zero padding of it goes to hell
                      (cl-radar.math:dc-center-slice samples-actual-ar)
+
+                     (setf *last-trigger-samples-filtered*
+                           (alexandria:copy-array samples-actual-ar))
 
                      ;; copy the samples into the longer, initially 0.0, power-of-two sample array
                      (cl-radar.math:array-copy-into
@@ -684,7 +694,7 @@ CL-USER>
                       0 (array-dimension samples-actual-ar 0)
                       sample-ar)
 
-                     (push sample-ar slices)
+                     (push (setf *last-trigger-padded* sample-ar) slices)
 
                      (let ((fft-r
                              (bordeaux-fft:windowed-fft
@@ -695,6 +705,17 @@ CL-USER>
                 (nreverse slices))
           (setf *last-fft-slices*
                 result-ar-list)))))
+
+
+;; TODO: all these vars should be better named; they are the signal samples not trigger samps
+(defun plot-triggered-chunk ()
+  (vgplot:subplot 3 1 0)
+  (vgplot:plot *last-trigger-samples-raw*)
+  (vgplot:subplot 3 1 1)
+  (vgplot:plot *last-trigger-samples-filtered*)
+  (vgplot:subplot 3 1 2)
+  (vgplot:plot *last-trigger-padded*))
+
 
 @export
 (defun read-and-slice-all (&optional wav-path preserve-globals-p)
