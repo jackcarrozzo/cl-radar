@@ -404,8 +404,9 @@ CL-USER>
                                these-slices)
                        these-slices)
                    (incf curr-slice slices-at-once)))
-                 (when (and include-waves-every
-                            (= 0 (mod curr-slice include-waves-every)))
+                 (when (or (= 0 curr-slice)
+                           (and include-waves-every
+                                (= 0 (mod curr-slice include-waves-every))))
                    (let* (
                           ;;(to-i (1- (array-dimension cl-radar.audio:*last-left-samps* 0))) ;; at end
                           ;;(from-i (- to-i wave-samples-len))
@@ -663,7 +664,8 @@ CL-USER>
           (setf *last-fft-sum*
                 result-ar))
         ;; define result-ar inside loop and push it to results list each time
-        (let ((result-ar-list nil))
+        (let ((result-ar-list nil)
+              (hpf (cl-radar.filter:make-fir-highpass-filter 48000 500 :order 101)))
           (loop for n from 0 below (length trigger-edges)
                 do
                    (let* ((this-edge (nth n trigger-edges))
@@ -682,17 +684,25 @@ CL-USER>
                      (setf *last-trigger-samples-raw*
                            (alexandria:copy-array samples-actual-ar))
 
-                     ;; make sure to center slice before zero padding of it goes to hell
+                     ;; make sure to center slice before zero padding or it goes to hell
                      (cl-radar.math:dc-center-slice samples-actual-ar)
+
+                     ;; filter smaller samples-actual-ar into sample-ar
+                     (dotimes (i (array-dimension sample-ar 0))
+                       (setf (aref sample-ar i)
+                             (funcall hpf
+                                      (if (< i (array-dimension samples-actual-ar 0))
+                                          (aref samples-actual-ar i)
+                                          0.0))))
 
                      (setf *last-trigger-samples-filtered*
                            (alexandria:copy-array samples-actual-ar))
 
                      ;; copy the samples into the longer, initially 0.0, power-of-two sample array
-                     (cl-radar.math:array-copy-into
-                      samples-actual-ar
-                      0 (array-dimension samples-actual-ar 0)
-                      sample-ar)
+                     ;;(cl-radar.math:array-copy-into
+                     ;; samples-actual-ar
+                     ;; 0 (array-dimension samples-actual-ar 0)
+                     ;; sample-ar)
 
                      (push (setf *last-trigger-padded* sample-ar) slices)
 
@@ -706,6 +716,11 @@ CL-USER>
           (setf *last-fft-slices*
                 result-ar-list)))))
 
+#|
+sbcl --eval "(ql:quickload 'cl-radar)" --eval '(cl-radar.image:write-slices-to-png (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :wav-path "/Users/jackc/Projects/cl-radar/data/rad1longernocapnorfblankbetter_stereo_vshort.wav" :single-out-p nil :ac-trig-p t))' --eval "(cl-radar.fmcw::plot-triggered-chunk)"
+
+why does hpf'd data have that giant discontinuity at i=poles/2
+|#
 
 ;; TODO: all these vars should be better named; they are the signal samples not trigger samps
 (defun plot-triggered-chunk ()
