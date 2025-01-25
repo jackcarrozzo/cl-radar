@@ -268,16 +268,23 @@
 
     ;; normalize by a0
     (labels ((norm (x) (/ x a0)))
-      (list (nth-value 0 (norm b0)) (norm b1) (norm b2)
-            (norm a1) (norm a2)))))
+      ;;(list (nth-value 0 (norm b0)) (norm b1) (norm b2)
+      ;;      (norm a1) (norm a2))
+      (list (norm b0) (norm b1) (norm b2) (norm a1) (norm a2)))))
 
 @export
 (defun make-iir-highpass-filter (sample-rate cutoff
                                  &key (q (/ 1.0 (sqrt 2.0))))
   ;; q = resonance / damping factor (default = 1/sqrt(2) => Butterworth)
-  (multiple-value-bind (b0 b1 b2 a1 a2)
-      (apply #'iir-biquad-highpass-coeffs sample-rate cutoff
-             (list :q q))
+  (let* ((rl (iir-biquad-highpass-coeffs sample-rate cutoff :q q))
+         (b0 (first rl))
+         (b1 (second rl))
+         (b2 (third rl))
+         (a1 (fourth rl))
+         (a2 (fifth rl)))
+
+    (format t "-- b0 is ~a~%" b0)
+    (format t "-- b1 is ~a~%" b1)
 
     ;; https://stackoverflow.com/questions/60104101/common-lisp-difference-between-declare-check-type
 #|
