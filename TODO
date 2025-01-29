@@ -8,5 +8,6 @@ read raw pcm, 24 bit
 - wav: read n channels "at once"
 
 
-- tests: wav, gen, ws
+- tests: wav, gen, ws, filters
 
+- filterbank as structured array of generated fmcw rx wavelets

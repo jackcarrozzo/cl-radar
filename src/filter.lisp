@@ -283,6 +283,8 @@
          (a1 (fourth rl))
          (a2 (fifth rl)))
 
+    ;; destrucuring-bind silently failed above for unknown reasons ^
+
     (format t "-- b0 is ~a~%" b0)
     (format t "-- b1 is ~a~%" b1)
 

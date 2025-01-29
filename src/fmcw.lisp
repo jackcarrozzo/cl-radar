@@ -353,7 +353,8 @@ CL-USER>
             (looping-ws-fft-stream fft-slices-list
                                    :max-loops-thru max-loops-thru
                                    :delay-s delay-s
-                                   :log-p log-p)
+                                   :log-p log-p
+                                   :include-waves-every 100)
             (write-line "--- looper thread all done, leaving.")
             (setf *looper-thread* nil))))
 
@@ -665,7 +666,9 @@ CL-USER>
                 result-ar))
         ;; define result-ar inside loop and push it to results list each time
         (let ((result-ar-list nil)
-              (hpf (cl-radar.filter:make-fir-highpass-filter 48000 500 :order 101)))
+              ;;(hpf (cl-radar.filter:make-fir-highpass-filter 48000 500 :order 101))
+              (hpf (cl-radar.filter:make-iir-highpass-filter 48000 500)) ;; iir looks a lot better
+              )
           (loop for n from 0 below (length trigger-edges)
                 do
                    (let* ((this-edge (nth n trigger-edges))
@@ -687,7 +690,7 @@ CL-USER>
                      ;; make sure to center slice before zero padding or it goes to hell
                      (cl-radar.math:dc-center-slice samples-actual-ar)
 
-                     ;; filter smaller samples-actual-ar into sample-ar
+                     ;; filter smaller samples-actual-ar into sample-ar, continuing past end of former
                      (dotimes (i (array-dimension sample-ar 0))
                        (setf (aref sample-ar i)
                              (funcall hpf
