@@ -59,10 +59,10 @@
 (defvar *handler* nil)
 
 @export
-(defun run-if-not-already ()
+(defun run-if-not-already (&optional (port +ws-port+))
   (when (not *handler*)
     (format t "-- ws run-if-not-already: werent yet running, doing it.~%")
-    (run)))
+    (run port)))
 
 @export
 (defun run (&optional (port +ws-port+))

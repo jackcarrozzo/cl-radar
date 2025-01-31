@@ -290,7 +290,10 @@ CL-USER>
      :trigs--in--chunk ,(getf *last-stats* :trig-periods-kept))))
 
 @export
-(defun format-signal-and-trigger-frame (edge-list trigger-samples signal-samples-ars-list from-i to-i)
+(defun format-signal-and-trigger-frame (edge-list trigger-samples
+                                        signal-samples-ars-list
+                                        windowed-samples-ars-list
+                                        from-i to-i)
   (let ((relevant-edges (filter-edges-by-bound edge-list from-i to-i))
         (trig-ar (subseq trigger-samples from-i to-i)) ;; TODO:
         ;;(trig-ar (subseq trigger-samples 0 (- to-i from-i)))
@@ -312,7 +315,8 @@ CL-USER>
        :type "wave"
        :trigger--edges ,relevant-edges
        :trigger--samples ,trig-ar
-       :signal--samples ,signal-ars))))
+       :signal--samples ,signal-ars
+       :windowed--samples ,windowed-samples-ars-list))))
 
 @export
 (defun filter-edges-by-bound (edge-list from-i to-i)
@@ -333,7 +337,8 @@ CL-USER>
 (defun threaded-looping-ws-stream (&key (fft-slices-list *last-fft-slices*)
                                      (max-loops-thru 10000)
                                      (delay-s 0.2)
-                                     (log-p t))
+                                     (log-p t)
+                                     (include-waves-every 50))
   (if *looper-thread*
       (progn
         (format t "-- not starting another looping thread! one exists.~%")
@@ -353,7 +358,7 @@ CL-USER>
                                    :max-loops-thru max-loops-thru
                                    :delay-s delay-s
                                    :log-p log-p
-                                   :include-waves-every 100)
+                                   :include-waves-every include-waves-every)
             (write-line "--- looper thread all done, leaving.")
             (setf *looper-thread* nil))))
 
@@ -397,6 +402,7 @@ CL-USER>
                (let ((these-slices
                        (subseq fft-slices-list
                                curr-slice (+ curr-slice slices-at-once))))
+
                  (cl-radar.websocket:send-to-all-clients
                   (format-json-waterfall
                    (if log-p
@@ -420,6 +426,7 @@ CL-USER>
                       (format-signal-and-trigger-frame
                        *last-fmcw-edges* cl-radar.audio:*last-left-samps*
                        (list cl-radar.audio:*last-right-samps*)
+                       (list *last-trigwin-samples*)
                        from-i to-i))))
                  (sleep delay-s)))
       (when marker-p
@@ -602,7 +609,7 @@ CL-USER>
 
 (defvar *last-trigger-samples-raw* nil)
 (defvar *last-trigger-samples-filtered* nil)
-(defvar *last-trigger-padded* nil)
+(defvar *last-trigwin-samples* nil)
 
 ;; this is the good new prefered method since it uses a constant ar size chosen at start
 ;;   (obv wont work for variable trigger timing)
@@ -709,7 +716,7 @@ CL-USER>
                      ;; 0 (array-dimension samples-actual-ar 0)
                      ;; sample-ar)
 
-                     (push (setf *last-trigger-padded* sample-ar) slices)
+                     (push (setf *last-trigwin-samples* sample-ar) slices)
 
                      (let ((fft-r
                              (bordeaux-fft:windowed-fft
@@ -734,7 +741,7 @@ why does hpf'd data have that giant discontinuity at i=poles/2
   (vgplot:subplot 3 1 1)
   (vgplot:plot *last-trigger-samples-filtered*)
   (vgplot:subplot 3 1 2)
-  (vgplot:plot *last-trigger-padded*))
+  (vgplot:plot *last-trigwin-samples*))
 
 
 @export
