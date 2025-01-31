@@ -65,9 +65,10 @@
     (run)))
 
 @export
-(defun run ()
+(defun run (&optional (port +ws-port+))
+  (format t "-- starting ws handler on port ~a.~%" port)
   (setf *handler*
-        (clack:clackup #'ws-server :port +ws-port+)))
+        (clack:clackup #'ws-server :port port)))
 
 @export
 (defun stop (&optional (handler *handler*))

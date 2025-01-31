@@ -334,7 +334,6 @@ CL-USER>
                                      (max-loops-thru 10000)
                                      (delay-s 0.2)
                                      (log-p t))
-
   (if *looper-thread*
       (progn
         (format t "-- not starting another looping thread! one exists.~%")
@@ -378,6 +377,9 @@ CL-USER>
 
 (cl-radar.fmcw:looping-ws-fft-stream
   cl-radar.fmcw::*last-fft-slices* :max-loops-thru 10)
+
+(cl-radar.image:write-slices-to-png (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :wav-path "/Users/jackc/Projects/cl-radar/data/captrigfast_stereo.wav" :single-out-p nil :ac-trig-p t))
+(cl-radar.fmcw:looping-ws-fft-stream cl-radar.fmcw::*last-fft-slices* :include-waves-every 60 )
 |#
 
 ;; TODO: send chunks of slices at a time (and tell the ui)
@@ -911,7 +913,7 @@ why does hpf'd data have that giant discontinuity at i=poles/2
      ";radar dist returns;")))
 
 
-(defparameter +trigger-offset-start-samples+ 16) ;; samples between trigger edge and chunk start
+(defparameter +trigger-offset-start-samples+ 0) ;; samples between trigger edge and chunk start
 (defparameter +trigger-offset-end-samples+ 0) ;; samples back to end before trigger cross found
 ;; jc 2024-12-24 seems ok
 

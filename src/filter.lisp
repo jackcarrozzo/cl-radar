@@ -244,7 +244,7 @@
 ;; standard 2nd‐order “RBJ cookbook” highpass design (sometimes referred to as a “Butterworth‐style” or “Q=1/√2” approach)
 
 
-;;; 1) coefficient generator for a 2nd-order RBJ cookbook hpf
+;;; coefficient generator for 2nd-order RBJ cookbook hpf
 
 @export
 (defun iir-biquad-highpass-coeffs (sample-rate cutoff &key (q (/ 1.0 (sqrt 2.0))))
