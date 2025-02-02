@@ -6,6 +6,8 @@
 (in-package :cl-radar.wavegen)
 (cl-syntax:use-syntax :annot)
 
+;; TODO: qam / ofdma correlation wavegen and decode
+
 
 (defconstant twopi (* 2 3.14159))
 
