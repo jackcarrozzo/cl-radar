@@ -48,6 +48,27 @@
         continue-p)))
 
 @export
+(defun complex-array-difference (ar1 ar2)
+  (assert (= (length ar1) (length ar2)))
+
+  (let ((sum 0.0d0))
+    (dotimes (i (length ar1))
+      (let ((ar1-i (realpart (aref ar1 i)))
+            (ar1-q (imagpart (aref ar1 i)))
+            (ar2-i (realpart (aref ar2 i)))
+            (ar2-q (imagpart (aref ar2 i))))
+        (incf sum
+              (sqrt
+               (+
+                (expt (- ar2-i ar1-i) 2)
+                (expt (- ar2-q ar1-q) 2))))))
+    sum))
+
+@export
+(defun complex-array-mostly-equal-p (ar1 ar2 &optional (max-diff-per-el 0.001))
+  (< (complex-array-difference ar1 ar2) (* max-diff-per-el (length ar1))))
+
+@export
 (defun list-of-arrays-equal (list1 list2)
   (and
    (= (length list1) (length list2))
