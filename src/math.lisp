@@ -69,6 +69,32 @@
   (< (complex-array-difference ar1 ar2) (* max-diff-per-el (length ar1))))
 
 @export
+(defun complex-multidim-array-difference (ar1 ar2)
+  (assert (equal (array-dimensions ar1)
+                 (array-dimensions ar2)))
+
+  (let ((sum 0.0d0))
+    (dotimes (i (array-dimension ar1 0))
+      (dotimes (j (array-dimension ar1 1))
+        (let ((ar1-i (realpart (aref ar1 i j)))
+              (ar1-q (imagpart (aref ar1 i j)))
+              (ar2-i (realpart (aref ar2 i j)))
+              (ar2-q (imagpart (aref ar2 i j))))
+          (incf sum
+                (sqrt
+                 (+
+                  (expt (- ar2-i ar1-i) 2)
+                  (expt (- ar2-q ar1-q) 2)))))))
+    sum))
+
+@export
+(defun complex-multidim-array-mostly-equal-p (ar1 ar2 &optional (max-diff-per-el 0.001))
+  (< (complex-multidim-array-difference ar1 ar2)
+     (* max-diff-per-el
+        (array-dimension ar1 0)
+        (array-dimension ar1 1))))
+
+@export
 (defun list-of-arrays-equal (list1 list2)
   (and
    (= (length list1) (length list2))
@@ -126,7 +152,32 @@
 (defparameter +comp-ar-mag-dbg+ t) ;; t
 
 @export
-(defun complex-ar-mags (complex-src real-dst &optional incf-p)
+(defun array-mapcar (fn ar)
+  (let ((r (make-array (length ar) :initial-element 0.0d0)))
+    (dotimes (i (length ar))
+      (setf (aref r i)
+            (funcall fn (aref ar i))))
+    r))
+
+@export
+(defun complex-mags (ar)
+  (array-mapcar
+   (lambda (c)
+     (sqrt
+      (+ (expt (realpart c) 2)
+         (expt (imagpart c) 2))))
+   ar))
+
+@export
+(defun complex-reals (ar)
+  (array-mapcar #'realpart ar))
+
+@export
+(defun complex-imags (ar)
+  (array-mapcar #'imagpart ar))
+
+@export
+(defun complex-ar-mags (complex-src real-dst &optional incf-p) ;; TODO: fft specific, rename
   (if (not (= (/ (array-dimension complex-src 0) 2)
               (array-dimension real-dst 0)))
       (format t "--- complex-ar-mags: odd sizes, complex-src ~a vs real-dst ~a, skipping. ~%"

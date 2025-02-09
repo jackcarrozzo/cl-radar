@@ -57,6 +57,52 @@
        #2A((1.1 2.2 9.0)
            (1.1 2.2 3.3)))))
 
+(deftest test-complex-multidim-array-mostly-equal-p (BasicArraySuite)
+  (assert-true
+      (cl-radar.math:complex-multidim-array-mostly-equal-p
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0)))
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0)))))
+
+  (assert-true
+      (cl-radar.math:complex-multidim-array-mostly-equal-p
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0)))
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0)))))
+
+  (assert-false
+      (cl-radar.math:complex-multidim-array-mostly-equal-p
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-1.0 0.0) #c(1.0 -1.0)))
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0)))))
+
+  (assert-false
+      (cl-radar.math:complex-multidim-array-mostly-equal-p
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0)))
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 1.0) #c(1.0 -1.0)))))
+
+  (assert-true
+      (cl-radar.math:complex-multidim-array-mostly-equal-p
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0)))
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0)))))
+
+  (assert-false
+      (cl-radar.math:complex-multidim-array-mostly-equal-p
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0)))
+       #2a((#c(0.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(0.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 -1.0))
+           (#c(1.0 1.0) #c(1.0 0.0) #c(-2.0 0.0) #c(1.0 1.0))))))
+
+
 ;; something very odd going on with this one, where it
 ;;  passes the first time the file is loaded but fails after
 #|
@@ -95,6 +141,55 @@
          #(-1.7609124 -4.7712126 -4.7712126 0.0))
       r)))
 |#
+
+(deftest test-array-mapcar (BasicArraySuite)
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:array-mapcar
+        (lambda (a) (+ a 0.2))
+        #(1.0 2.0 3.0 4.0))
+       #(1.2 2.2 3.2 4.2)))
+
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:array-mapcar
+        #'1+
+        #(1.0 2.0 3.0 4.0))
+       #(2.0 3.0 4.0 5.0)))
+
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:array-mapcar #'realpart #(1.0 2.0 3.0 4.0))
+       #(1.0 2.0 3.0 4.0)))
+
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:array-mapcar #'imagpart #(1.0 2.0 3.0 4.0))
+       #(0.0 0.0 0.0 0.0)))
+
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:array-mapcar #'imagpart #(#c(1.0 3.0) #c(2.0 -1.0) #c(3.0 0.1) #c(4.0 -0.5)))
+       #(3.0 -1.0 0.1 -0.5))))
+
+
+(deftest test-complex-mags (BasicArraySuite)
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:complex-mags #(#c(1.0 3.0) #c(2.0 -1.0) #c(3.0 0.1) #c(4.0 -0.5)))
+       #(3.1622777 2.236068 3.0016663 4.031129))))
+
+(deftest test-complex-reals (BasicArraySuite)
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:complex-reals #(#c(1.0 3.0) #c(2.0 -1.0) #c(3.0 0.1) #c(4.0 -0.5)))
+       #(1.0 2.0 3.0 4.0))))
+
+(deftest test-complex-imags (BasicArraySuite)
+  (assert-true
+      (cl-radar.math:float-array-mostly-equal-p
+       (cl-radar.math:complex-imags #(#c(1.0 3.0) #c(2.0 -1.0) #c(3.0 0.1) #c(4.0 -0.5)))
+       #(3.0 -1.0 0.1 -0.5))))
 
 (deftest test-complex-ar-mags (BasicArraySuite)
   (let ((in #(#C(2.4 0.1) #C(1.2 0.2) #C(0.8 0.9) #C(0.5 0.4)))
