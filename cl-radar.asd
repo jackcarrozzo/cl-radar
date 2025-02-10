@@ -4,9 +4,9 @@
 (in-package :cl-radar-asd)
 
 (defsystem cl-radar
-  :version "0.1"
+  :version "0.2"
   :author "JC"
-  :license ""
+  :license "MIT"
   :depends-on (:cl-ppcre
                :cl-syntax-annot
                :cl-json
@@ -37,6 +37,7 @@
                          (:file "filter" :depends-on ("math" "util"))
                          (:file "image" :depends-on ("math"))
                          (:file "fmcw" :depends-on ("util" "math" "wavegen" "audio" "image" "websocket" "gen"))
+                         (:file "correlation" :depends-on ("util" "math" "wavegen" "image"))
                          (:file "websocket" :depends-on ("util"))
                          (:file "gen" :depends-on ("util" "math"))
                          (:file "util")

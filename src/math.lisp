@@ -4,6 +4,21 @@
 (in-package :cl-radar.math)
 (cl-syntax:use-syntax :annot)
 
+@export
+(defun first-relative-prime (n &optional (start 2))
+  (loop for r from start below n
+        when (= (gcd r n) 1)
+          do (return r)
+        finally (return nil)))
+
+@export
+(defun all-relative-primes (n)
+  (remove nil
+          (loop for r from 1 below n
+                collecting
+                (if (= 1 (gcd r n))
+                    r nil))))
+
 (defparameter +max-float-diff+ 0.0002)
 
 @export
@@ -104,6 +119,25 @@
                                for a2 in list2
                                collecting
                                (float-array-mostly-equal-p a1 a2)))))))
+
+;; bordeaux-fft internal format compatible complex-sample arrays
+eexport
+(defmacro make-csarray (n &optional initial-contents)
+  (let ((args `(make-array ,n :element-type 'bordeaux-fft:complex-sample)))
+    (if initial-contents
+        `(,@args :initial-contents ,initial-contents)
+        args)))
+
+@export
+(defun convert-to-csarray (in-ar)
+  (let ((r (make-carray (length in-ar))))
+    (dotimes (i (length r))
+      (setf (aref r i)
+            (complex
+             (float (realpart (aref in-ar i)) 0.0d0) ;; convert to double-float
+             (float (imagpart (aref in-ar i)) 0.0d0))))))
+
+
 
 ;; ref its highest value; in place
 @export
