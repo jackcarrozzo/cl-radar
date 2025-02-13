@@ -50,50 +50,103 @@ root gives how many times thru the sequeuence it goes during length
     seq))
 
 
+#|
+(defun make-gold-code-generator-simple
+    (&key (taps1 '(6 5 0))
+          (initial-state1 '(1 0 0 0 0 0 1))
+          (taps2 '(6 1 0))
+          (initial-state2 '(1 1 0 0 0 1 0))
+          (offset 10))
+  ;; local function to step an lfsr
+  (labels ((step-lfsr (reg taps)
+             (let* ((feedback (reduce #'cl-radar.math::xor
+                                      (mapcar (lambda (tap)
+                                                (nth (- (length reg) 1 tap) reg))
+                                              taps)
+                                      :initial-value 0))
+                    (out (car (last reg)))
+                    (shifted (butlast reg)))
+               (values out (cons feedback shifted)))))
+    (let ((reg1 (copy-list initial-state1))
+          (reg2 (copy-list initial-state2)))
+      ;; advance second lfsr 'offset' times
+      (dotimes (i offset)
+        (setf reg2
+              (nth-value 1
+                         (step-lfsr reg2 taps2))))
+      (lambda (length)
+        (let ((bits nil))
+          (dotimes (i length)
+            (multiple-value-bind (o1 n1) (step-lfsr reg1 taps1)
+              (multiple-value-bind (o2 n2) (step-lfsr reg2 taps2)
+                (push (cl-radar.math::xor o1 o2) bits)
+                (setf reg1 n1
+                      reg2 n2))))
+(nreverse bits))))))
+|#
+
+;; TODO:
+(defun zgcd (a b)
+  (if (zerop b)
+      a
+      (gcd b (mod a b))))
+
+(defun zlcm (a b)
+  (if (or (zerop a) (zerop b))
+      0
+      (/ (abs (* a b)) (gcd a b))))
+
+;; returns a generator closure and repeat length
 @export
-(defun step-lfsr (&key (register '(1 0 1)) (taps '(3 2 0)))
-  ;; xor tap bits
-  (let* ((feedback (reduce #'cl-radar.math::xor
-                           (let ((r
-                                   (mapcar (lambda (tap)
-                                             (format t "-- tap: ~a, n: ~a~%"
-                                                     tap (- (length register) 1 tap))
-                                             (nth (- (length register) 1 tap)
-                                                  register))
-                                           taps)))
-                             (format t "-- after mapcar: ~a~%" r))
-                           :initial-value 0))
-         (out (car (last register)))      ;; shifted out bit
-         (shifted (butlast register)))     ;; shift right
-    ;; output bit, updated register
-    (values out (cons feedback shifted))))
+(defun make-gold-code-generator
+    (&key (taps1 '(6 5 0))
+          (initial-state1 '(1 0 0 0 0 0 1))
+          (taps2 '(6 1 0))
+          (initial-state2 '(1 1 0 0 0 1 0))
+          (offset 10))
+  ;; local lfsr step
+  (labels ((step-lfsr (reg taps)
+             (let* ((feedback (reduce #'cl-radar.math::xor
+                                      (mapcar (lambda (tap)
+                                                (nth (- (length reg) 1 tap) reg))
+                                              taps)
+                                      :initial-value 0))
+                    (out (car (last reg)))
+                    (shifted (butlast reg)))
+               (values out (cons feedback shifted)))))
+    (let* ((reg1 (copy-list initial-state1))
+           (reg2 (copy-list initial-state2))
+           (n1 (length reg1))
+           (n2 (length reg2))
+           (period1 (1- (ash 1 n1)))  ;; 2^n1 - 1
+           (period2 (1- (ash 1 n2)))  ;; 2^n2 - 1
+           (repeat-length (zlcm period1 period2)))
+      ;; offset second lfsr
+      (dotimes (i offset)
+        (multiple-value-bind (o2 new-reg2)
+            (step-lfsr reg2 taps2)
+          (declare (ignore o2))
+          (setf reg2 new-reg2)))
+      (values (lambda (length)
+                (let ((bits nil))
+                  (dotimes (i length)
+                    (multiple-value-bind (o1 new-reg1) (step-lfsr reg1 taps1)
+                      (multiple-value-bind (o2 new-reg2) (step-lfsr reg2 taps2)
+                        (push (cl-radar.math::xor o1 o2) bits)
+                        (setf reg1 new-reg1
+                              reg2 new-reg2))))
+                  (nreverse bits)))
+              repeat-length))))
 
 @export
-(defun gold-m-sequence (&key (taps '(2 1 0)) (initial-state '(1 0 1)) (length 7))
-  (let ((reg initial-state)
-        (seq ()))
-    (dotimes (i length)
-      (multiple-value-bind (out new-reg)
-          (step-lfsr :register reg :taps taps)
-        (push out seq)
-        (setf reg new-reg)))
-    (nreverse seq)))
-
-(defun generate-gold-code (&key (taps1 '(2 1 0))
-                                (initial-state1 '(1 0 1))
-                                (taps2 '(2 0 1))
-                                (initial-state2 '(1 1 0))
-                                (offset 1)
-                                (code-length 7))
-  (let* ((m1 (gold-m-sequence :taps taps1
-                                  :initial-state initial-state1
-                                  :length code-length))
-         (m2-full (gold-m-sequence :taps taps2
-                                   :initial-state initial-state2
-                                   :length (+ code-length offset)))
-         (m2 (subseq m2-full offset (+ offset code-length))))
-    (mapcar #'cl-radar.math::xor m1 m2)))
-
+(defun gold-gen-tester ()
+  (multiple-value-bind (g repeat-n)
+      (make-gold-code-generator :offset 3)
+    (format t "first 8 bits: ~a~%" (funcall g 8))
+    (format t "next 8 bits: ~a~%" (funcall g 8))
+    (format t "64 bits: ~a~%" (funcall g 64))
+    (format t "512 bits: ~a~%" (funcall g 512))
+    (format t "repeats after ~a bits.~%" repeat-n)))
 
 ;;;;;;;;;;;;;;; correlators
 
