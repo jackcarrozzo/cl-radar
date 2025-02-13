@@ -20,6 +20,18 @@
                     r nil))))
 
 @export
+(defun zgcd (a b)
+  (if (zerop b)
+      a
+      (gcd b (mod a b))))
+
+@export
+(defun zlcm (a b)
+  (if (or (zerop a) (zerop b))
+      0
+      (/ (abs (* a b)) (gcd a b))))
+
+@export
 (defun xor (a b)
   (assert (or
            (and (equal 'bit (type-of a))

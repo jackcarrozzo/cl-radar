@@ -206,12 +206,43 @@ root gives how many times thru the sequeuence it goes during length
             (funcall compare-fn (aref ref-ar i) (aref sig-ar i))))
     (/ sum (float (length ref-ar)))))
 
+;; also works on arrays of reals
 @export
 (defun sliding-complex-correlation (ref-ar sig-ar &optional (search-n 100))
   (let ((r (make-array search-n :initial-element 0.0d0)))
     (dotimes (i search-n)
       (setf (aref r i)
             (complex-correlation
-             (subseq sig-ar i)
-             (subseq ref-ar 0 (- (length ref-ar) i)))))
+             (subseq sig-ar i) ;; sig-ar starts farther fwd each time
+             (subseq ref-ar 0 (- (length ref-ar) i))))) ;; ref-ar one shorter each time so it can slide
     r))
+
+;; this one is remarkable!
+@export
+(defun graph-gold-correlation (&key (sig-len 10000) (search-n 1000))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (format t "-- gold code repeats every ~a symbols/chips.~%" gold-repeat-n)
+    (let* ((full-ref (make-array sig-len
+                                 :initial-contents (funcall gold-gen sig-len)))
+           (ref-slice (subseq full-ref 20))
+           (sig-slice (subseq full-ref 0 (- (length full-ref) 20)))
+           (corr-r (sliding-complex-correlation ref-slice sig-slice search-n)))
+      (format t "-- corr-r came back len ~a.~%" (length corr-r))
+      (vgplot:plot corr-r))))
+
+;; this one is really good too
+@export
+(defun graph-gold-mixed (&key (sig-len 10000) (search-n 1000))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (format t "-- gold code repeats every ~a symbols/chips.~%" gold-repeat-n)
+    (let* ((full-ref (make-array sig-len
+                                 :initial-contents (funcall gold-gen sig-len)))
+           (ref-slice (subseq full-ref 100))
+           (sig1-slice (subseq full-ref 80 (- (length full-ref) 20)))
+           (sig2-slice (subseq full-ref 50 (- (length full-ref) 50)))
+           (sigs (cl-radar.math:sum-arrays (list sig1-slice sig2-slice)))
+           (corr-r (sliding-complex-correlation ref-slice sigs search-n)))
+      (format t "-- corr-r came back len ~a.~%" (length corr-r))
+      (vgplot:plot corr-r))))
