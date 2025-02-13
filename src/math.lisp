@@ -19,6 +19,17 @@
                 (if (= 1 (gcd r n))
                     r nil))))
 
+@export
+(defun xor (a b)
+  (assert (or
+           (and (equal 'bit (type-of a))
+                (equal 'bit (type-of b)))
+           (and (equal 'integer (first (type-of a)))
+                (equal 'integer (first (type-of b))))))
+  (if (= 1 (+ a b))
+      1
+      0))
+
 (defparameter +max-float-diff+ 0.0002)
 
 @export

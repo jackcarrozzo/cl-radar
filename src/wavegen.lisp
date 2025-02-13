@@ -138,12 +138,14 @@
                      (* 0.3 nextv)))))
   ar)
 
-;;;;;;;
 
+
+;;;;;;;
+;; generate a single random deviate from a normal distribution
+;;   with the given mean and std dev using Box-Muller."
 @export
 (defun random-gaussian (&optional (mean 0d0) (std 1d0))
-  "generate a single random deviate from a normal distribution with
-the given mean and std dev using Box-Muller."
+
   (multiple-value-bind (u1 u2)
       (values (random 1.0d0) (random 1.0d0))
     (let* ((r (sqrt (* -2d0 (log (max u1 1.0d-30)))))  ; avoid log(0)
@@ -151,15 +153,6 @@ the given mean and std dev using Box-Muller."
       (+ mean (* std r (cos theta))))))
 
 (defconstant +c+ 2.998d8)
-
-#|
-"Generate a 2D array of complex IF samples for a single positive-ramp FMCW chirp.
-  TARGETS is a list of (range-m angle-deg amplitude). Returns a
-  NUM-ELEMENTS x NUM-SAMPLES array of complex double-floats.
-  SWEEP-TIME (default 16 ms) is used to derive the internal sweep slope:
-    (slope) = BANDWIDTH / SWEEP-TIME.
-  NOISE-STD is the standard deviation of additive Gaussian noise on the final sum."
-|#
 
 @export
 (defun generate-fmcw-if-samples
@@ -251,3 +244,43 @@ the given mean and std dev using Box-Muller."
                          (* amplitude (sin inst-phase)))))))
             (setf (aref if-array elem n) sum-of-targets)))))
     if-array))
+
+
+;;;;;;;
+
+@export
+(defun sine-into! (ar freq-hz &key (sample-rate 24000) (magnitude 1.0) (offset 0.0))
+  (let ((tx 0.0))
+    (dotimes (i (length ar))
+      (setf (aref ar i)
+            (+ offset
+               (* magnitude
+                  (sin
+                   (*
+                    freq-hz
+                    (incf tx (/ 1 sample-rate))
+                    2 Pi))))))
+    ar))
+
+@export
+(defun triangle-into! (ar freq-hz &key (sample-rate 24000) (magnitude 1.0)
+                                    (offset 0.0) debug-p)
+  (let* ((period-in-samples (/ (float sample-rate) freq-hz))
+         (half-period (/ period-in-samples 2.0))
+         (pis '()))
+
+    (when debug-p
+      (format t "period in samples is ~a.~%" period-in-samples))
+
+    (dotimes (i (length ar))
+      (let* ((i+offset (+ i offset))
+             (phase-in-samples (mod i+offset period-in-samples)))
+        (when debug-p (push phase-in-samples pis))
+        (setf (aref ar i)
+              (* magnitude ;; peak to peak
+                 (+ 0.5 ;; center on on [-0.5, 0.5]
+                    (if (< phase-in-samples half-period)
+                        (/ (- phase-in-samples half-period) half-period)
+                        (/ (- half-period phase-in-samples) half-period)))))))
+    (when debug-p (format t "phase in samples: ~a~%" (nreverse pis)))
+    ar))

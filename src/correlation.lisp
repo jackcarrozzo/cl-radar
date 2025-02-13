@@ -50,6 +50,49 @@ root gives how many times thru the sequeuence it goes during length
     seq))
 
 
+@export
+(defun step-lfsr (&key (register '(1 0 1)) (taps '(3 2 0)))
+  ;; xor tap bits
+  (let* ((feedback (reduce #'cl-radar.math::xor
+                           (let ((r
+                                   (mapcar (lambda (tap)
+                                             (format t "-- tap: ~a, n: ~a~%"
+                                                     tap (- (length register) 1 tap))
+                                             (nth (- (length register) 1 tap)
+                                                  register))
+                                           taps)))
+                             (format t "-- after mapcar: ~a~%" r))
+                           :initial-value 0))
+         (out (car (last register)))      ;; shifted out bit
+         (shifted (butlast register)))     ;; shift right
+    ;; output bit, updated register
+    (values out (cons feedback shifted))))
+
+@export
+(defun gold-m-sequence (&key (taps '(2 1 0)) (initial-state '(1 0 1)) (length 7))
+  (let ((reg initial-state)
+        (seq ()))
+    (dotimes (i length)
+      (multiple-value-bind (out new-reg)
+          (step-lfsr :register reg :taps taps)
+        (push out seq)
+        (setf reg new-reg)))
+    (nreverse seq)))
+
+(defun generate-gold-code (&key (taps1 '(2 1 0))
+                                (initial-state1 '(1 0 1))
+                                (taps2 '(2 0 1))
+                                (initial-state2 '(1 1 0))
+                                (offset 1)
+                                (code-length 7))
+  (let* ((m1 (gold-m-sequence :taps taps1
+                                  :initial-state initial-state1
+                                  :length code-length))
+         (m2-full (gold-m-sequence :taps taps2
+                                   :initial-state initial-state2
+                                   :length (+ code-length offset)))
+         (m2 (subseq m2-full offset (+ offset code-length))))
+    (mapcar #'cl-radar.math::xor m1 m2)))
 
 
 ;;;;;;;;;;;;;;; correlators
