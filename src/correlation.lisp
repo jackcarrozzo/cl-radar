@@ -246,3 +246,18 @@ root gives how many times thru the sequeuence it goes during length
            (corr-r (sliding-complex-correlation ref-slice sigs search-n)))
       (format t "-- corr-r came back len ~a.~%" (length corr-r))
       (vgplot:plot corr-r))))
+
+;; TODO: this prolly belongs elsewhere
+@export
+(defun symbols-to-n-samples (symbols-ar n-samples-per-sym)
+  (let ((r (make-array (* n-samples-per-sym (length symbols-ar)) :initial-element 0.0)))
+    (loop for i from 0 below (length symbols-ar)
+          do
+             (loop for j from 0 below n-samples-per-sym
+                   do
+                      (let ((r-index (+ (* i n-samples-per-sym) j)))
+                        #|(format t "-- i ~a, j ~a, setting r ~a to symbol ~a: ~a~%"
+                                i j (+ i j) r-index (aref symbols-ar i))|#
+                        (setf (aref r r-index)
+                              (aref symbols-ar i)))))
+    r))
