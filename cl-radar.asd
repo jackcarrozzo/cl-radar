@@ -38,6 +38,7 @@
                          (:file "image" :depends-on ("math"))
                          (:file "fmcw" :depends-on ("util" "math" "wavegen" "audio" "image" "websocket" "gen"))
                          (:file "correlation" :depends-on ("util" "math" "wavegen" "image"))
+                         (:file "modulation" :depends-on ("util" "math"))
                          (:file "websocket" :depends-on ("util"))
                          (:file "gen" :depends-on ("util" "math"))
                          (:file "util")

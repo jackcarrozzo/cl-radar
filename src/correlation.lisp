@@ -50,6 +50,7 @@ root gives how many times thru the sequeuence it goes during length
     seq))
 
 
+;; TODO: put this one back in
 #|
 (defun make-gold-code-generator-simple
     (&key (taps1 '(6 5 0))
@@ -85,7 +86,7 @@ root gives how many times thru the sequeuence it goes during length
 (nreverse bits))))))
 |#
 
-;; TODO:
+;; TODO: still needed?
 (defun zgcd (a b)
   (if (zerop b)
       a
@@ -136,7 +137,7 @@ root gives how many times thru the sequeuence it goes during length
                         (setf reg1 new-reg1
                               reg2 new-reg2))))
                   (nreverse bits)))
-              repeat-length))))
+              repeat-length)))) ;; repeat-length is wrong seemingly? see graph
 
 @export
 (defun gold-gen-tester ()
@@ -261,3 +262,80 @@ root gives how many times thru the sequeuence it goes during length
                         (setf (aref r r-index)
                               (aref symbols-ar i)))))
     r))
+
+@export
+(defun graph-gold-subsampled (&key (sig-len 10000) (search-n 1000) (expand-by-n 4))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (format t "-- gold code repeats every ~a symbols/chips.~%" gold-repeat-n)
+    (let* ((full-ref
+             (symbols-to-n-samples
+              (make-array sig-len
+                          :initial-contents (funcall gold-gen sig-len))
+              expand-by-n))
+           (ref-slice (subseq full-ref 100))
+           (sig1-slice (subseq full-ref 80 (- (length full-ref) 20)))
+           (sig2-slice (subseq full-ref 50 (- (length full-ref) 50)))
+           (sigs (cl-radar.math:sum-arrays (list sig1-slice sig2-slice)))
+           (corr-r (sliding-complex-correlation ref-slice sigs search-n)))
+      (format t "-- corr-r came back len ~a.~%" (length corr-r))
+      (vgplot:plot corr-r))))
+
+;; TODO: this also should live elsewhere
+@export
+(defun resample-signal (ratio input-ar)
+  (assert (and (>= ratio 0.5) (<= ratio 2.0)))
+
+  (let* ((in-len (length input-ar))
+         ;; at 'half speed' (ratio 0.5), out-len = 2*in-len;
+         ;; at double speed (ratio 2), outlen = in-len/2
+         ;; maybe it should be the other way around tbh
+         (out-len (round (/ in-len ratio)))
+         (output (make-array out-len :initial-element 0.0)))
+    (dotimes (i out-len)
+      (let* ((x (* i ratio))
+             (floor-x (floor x))
+             (alpha (- x floor-x))
+             ;; clamp next-x to stay within array
+             (next-x (min (1+ floor-x) (1- in-len)))
+             (s0 (aref input-ar floor-x))
+             (s1 (aref input-ar next-x)))
+        ;; linear interpolation: y = s0*(1-alpha) + s1*alpha
+        (setf (aref output i)
+              (+ (* (- 1 alpha) s0)
+                 (* alpha s1)))))
+    output))
+
+;; another good one- at freq ratio 1.01, sig-len 800 is still a good peak but much lower
+;;   at 2000, small lump at 5000, gone at 10000 gone above with expand-by-n 4
+;;
+;; (cl-radar.corr::graph-gold-freq-diff :freq-ratio 1.001 :sig-len 5000)
+;;
+;; without expanding, peak and smear much more visible with
+;;
+;; (cl-radar.corr::graph-gold-freq-diff :freq-ratio 1.001 :sig-len 5000 :expand-by-n 1)
+;; (cl-radar.corr::graph-gold-freq-diff :freq-ratio 1.002 :sig-len 5000 :expand-by-n 1)
+;;
+
+@export
+(defun graph-gold-freq-diff (&key (sig-len 800) (search-n 200) (expand-by-n 4) (freq-ratio 1.01))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (format t "-- gold code repeats every ~a symbols/chips.~%" gold-repeat-n)
+    (let* ((full-ref
+             (symbols-to-n-samples
+              (make-array sig-len
+                          :initial-contents (funcall gold-gen sig-len))
+              expand-by-n))
+           (ref-slice (subseq full-ref 100))
+           (sig1-slice (subseq full-ref 80 (- (length full-ref) 20)))
+           (resampled (resample-signal freq-ratio
+                                       (subseq full-ref 50
+                                               (- (length full-ref) 50))))
+           (sig2-slice (subseq
+                        resampled
+                        0 (min (length resampled) (- (length full-ref) 50))))
+           (sigs (cl-radar.math:sum-arrays (list sig1-slice sig2-slice)))
+           (corr-r (sliding-complex-correlation ref-slice sigs search-n)))
+      (format t "-- corr-r came back len ~a.~%" (length corr-r))
+      (vgplot:plot corr-r))))

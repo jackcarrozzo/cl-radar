@@ -217,7 +217,7 @@ eexport
     r))
 
 @export
-(defun complex-mags (ar)
+(defun complex-mags (ar) ;; this is the simple one
   (array-mapcar
    (lambda (c)
      (sqrt
