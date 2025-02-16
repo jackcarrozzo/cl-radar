@@ -225,6 +225,17 @@ eexport
          (expt (imagpart c) 2))))
    ar))
 
+;; [0 - (n/2)-1][n/2 - n] to
+;; [n/2 - n][0 - (n/2)-1]
+@export
+(defun fft-swap (in-ar)
+  (let* ((n (length in-ar))
+         (half-n (floor (/ n 2)))
+         (r (make-array n :initial-element (aref in-ar 0))))
+    (array-copy-into in-ar half-n n r 0)
+    (array-copy-into in-ar 0 half-n r half-n)
+    r))
+
 @export
 (defun complex-reals (ar)
   (array-mapcar #'realpart ar))

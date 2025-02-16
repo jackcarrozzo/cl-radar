@@ -25,6 +25,7 @@
          (phases (make-array n :initial-element 0.0d0)))
     (lambda (bits)
       ;;(format t "-- phases: ~a~%" phases)
+      ;;(format t "-- bits: ~a~%" bits)
 
       ;; bits should be multiple of n
       (unless (zerop (mod (length bits) n))
@@ -40,6 +41,7 @@
               (let ((sum 0d0))
                 (dotimes (tone n)
                   (let ((bit (elt bits (+ start tone))))
+                    ;;(format t "---- bit ~a: ~a~%" (+ start tone) bit)
                     (when (not (zerop bit))
                       (incf sum (complex (* amplitude bit (cos (aref phases tone)))
                                          (* amplitude bit (sin (aref phases tone))))))))
@@ -61,17 +63,29 @@
     (let ((result2 (funcall mod #(0 1 0 0 0 1 0 0))))
       (format t "~&second call samples: ~a~%" result2))))
 
+;; (cl-radar.mod::graph-n-ask :gold-code-p t :samples 128)
 @export
-(defun graph-n-ask (&key (n 8) (samples 4096))
-  (let* ((ask-mod (make-ask-modulator 10000     ; sample rate
-                                      n         ; 4 tones
-                                      1000.0    ; spacing in hz
-                                      0.0       ; offset
+(defun graph-n-ask (&key (n 8) (samples 4096) (sample-rate 10000) (gold-code-p nil))
+  (let* ((ask-mod (make-ask-modulator sample-rate
+                                      n
+                                      1000.0
+                                      0.0
                                       samples))
-         (syms-input (make-array n :initial-element 1))
+         (syms-input (if (not gold-code-p)
+                         (make-array n :initial-element 1)
+                         (let ((gcf (cl-radar.corr:make-gold-code-generator :offset 7)))
+                           (funcall gcf 64))))
          (iq-data (funcall ask-mod syms-input))
          (fft-data (bordeaux-fft:windowed-fft iq-data (/ samples 2) samples))
-         (fft-mags (cl-radar.math:complex-mags fft-data)))
+         (fft-mags (cl-radar.math:complex-mags fft-data))
+         (x-axis (make-array (length fft-mags) :initial-element 0.0))
+         (half-sr (/ sample-rate 2)))
+    (format t "-- syms: ~a~%" syms-input)
     (format t "-- iq data is ~a long.~%" (length iq-data))
-    ;; TODO: fft mirror graph half thing
-    (vgplot:plot fft-mags)))
+
+    (dotimes (i (length x-axis))
+      (setf (aref x-axis i)
+            (+ (* -1 half-sr) (* sample-rate (/ i (length x-axis))))))
+
+    (format t "-- 0 hz center at index ~a.~%" (/ (length fft-mags) 2))
+    (vgplot:plot x-axis (cl-radar.math:fft-swap fft-mags))))
