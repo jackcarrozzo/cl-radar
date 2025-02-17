@@ -89,3 +89,96 @@
 
     (format t "-- 0 hz center at index ~a.~%" (/ (length fft-mags) 2))
     (vgplot:plot x-axis (cl-radar.math:fft-swap fft-mags))))
+
+
+;; create closure for n-ASK demod
+@export
+(defun make-ask-demodulator (n &key (center-frequency 0.0d0)
+                                (tone-spacing 100.0d0)
+                                (sample-rate 10000.0d0)
+                                (symbol-rate 100.0d0)
+                                (threshold 0.1d0)
+                                (positive-frequency t))
+  (let ((samples-per-symbol (round (/ sample-rate symbol-rate)))
+        (two-pi (* 2.0d0 Pi)))
+    (lambda (iq-samples)
+      (let* ((num-symbols (floor (/ (length iq-samples)
+                                    samples-per-symbol)))
+             (bits (make-array (* n (floor (/ (length iq-samples)
+                                              samples-per-symbol)))
+                               :initial-element 0))
+             (rawbits (make-array (length bits) :initial-element 0.0d0)))
+        (dotimes (sym num-symbols)
+          (let ((offset (* sym samples-per-symbol)))
+            (dotimes (bit n)
+              (let ((base-index (- bit (/ (1- n) 2d0)))
+                    (acc 0d0))
+                ;; TODO: fix this wacky shit
+                (let ((freq (if positive-frequency
+                                (+ center-frequency (* base-index tone-spacing))
+                                (- center-frequency (* base-index tone-spacing)))))
+                  (dotimes (j samples-per-symbol)
+                    (let* ((idx (+ offset j))
+                           (tm (/ idx sample-rate))
+                           (phase (* two-pi freq tm))
+                           (sample (aref iq-samples idx))
+                           (mix-real (cos phase))
+                           (mix-imag (- (sin phase)))
+                           (s-real (realpart sample))
+                           (s-imag (imagpart sample))
+                           (mixed-real (- (* s-real mix-real)
+                                          (* s-imag mix-imag)))
+                           (mixed-imag (+ (* s-real mix-imag)
+                                          (* s-imag mix-real)))
+                           (mag (sqrt (+ (* mixed-real mixed-real)
+                                         (* mixed-imag mixed-imag)))))
+                      (incf acc mag))))
+                ;;(setf (aref bits (+ (* sym n) bit))
+                ;;      (if (> (/ acc samples-per-symbol) threshold) 1 0))
+                (let ((idx (+ (* sym n) bit)))
+                  (setf (aref bits idx)
+                        (if (> (setf (aref rawbits idx)
+                                     (/ acc samples-per-symbol))
+                               threshold)
+                            1 0)))))))
+        (values
+         bits
+         rawbits)))))
+
+@export
+(defun n-ask-demod-tester (&key (n 8) (samples 4096) (sample-rate 10000) (threshold 1.1d0))
+  (let* ((ask-mod (make-ask-modulator sample-rate
+                                      n
+                                      5000.0 ; spacing
+                                      0.0    ; offset
+                                      samples)) ; samples per symbol
+         (syms-input (let ((gcf (cl-radar.corr:make-gold-code-generator :offset 7)))
+                       (funcall gcf 64)))
+         (iq-data (funcall ask-mod syms-input))
+         ;;(fft-data (bordeaux-fft:windowed-fft iq-data (/ samples 2) samples))
+         ;;(fft-mags (cl-radar.math:complex-mags fft-data))
+         ;;(x-axis (make-array (length fft-mags) :initial-element 0.0))
+         ;;(half-sr (/ sample-rate 2))
+         )
+    (format t "-- syms: ~a~%" syms-input)
+    (format t "-- iq data is ~a long.~%" (length iq-data))
+
+    (let ((ask-demod (make-ask-demodulator n :center-frequency 0.0
+                                             :tone-spacing 5000
+                                             :sample-rate 10000
+                                             :symbol-rate (float (/ 10000 samples))
+                                             :threshold threshold)))
+      (multiple-value-bind (output-bits output-rawbits)
+          (funcall ask-demod iq-data)
+        (format t "-- demod bits: ~a~%" output-bits)
+        (assert (= (length output-bits) (length syms-input)))
+        (let* ((bit-errs
+                 (loop for i from 0 below (length output-bits) ;; 1 for err, 0 for ok
+                       collecting
+                       (if (= 1 (+ (nth i syms-input) (aref output-bits i))) ;; xor
+                           1 0)))
+               (errs-total (reduce #'+ bit-errs)))
+          (format t "-- errs at : ~a~%" bit-errs)
+          (format t "-- (~a bit errors, ~a bits, ~a % BER)~%"
+                  errs-total (length output-bits) (/ (* 100.0 errs-total) (length output-bits)))
+          (format t "-- raw bits: ~a~%" output-rawbits))))))
