@@ -6,20 +6,19 @@
 
 ;; modulation and demodulation stuff
 
+(defconstant +two-pi+ (* 2.0 Pi))
 
 ;; create closure for n-ASK mod with continuous phase
 @export
 (defun make-ask-modulator (sample-rate n tone-distance
                            offset symbol-length
                            &optional (amplitude 1.0))
-  (let* ((two-pi (* 2d0 (acos -1.0)))
-         ;; tone frequencies around offset
-         (freqs (loop for i from 0 below n
+  (let* ((freqs (loop for i from 0 below n
                       collect (+ offset
                                  (* tone-distance
                                     (- i (/ (1- n) 2.0))))))
          ;; precompute phase increments for each tone
-         (phase-incr (mapcar (lambda (f) (/ (* two-pi f) sample-rate))
+         (phase-incr (mapcar (lambda (f) (/ (* +two-pi+ f) sample-rate))
                              freqs))
          ;; running phases for each tone
          (phases (make-array n :initial-element 0.0d0)))
@@ -49,7 +48,7 @@
               (dotimes (tone n)
                 (setf (aref phases tone)
                       (mod (+ (aref phases tone) (nth tone phase-incr))
-                           two-pi))))))
+                           +two-pi+))))))
         result))))
 
 (defun ask-t2 ()
@@ -99,8 +98,7 @@
                                 (symbol-rate 100.0d0)
                                 (threshold 0.1d0)
                                 (positive-frequency t))
-  (let ((samples-per-symbol (round (/ sample-rate symbol-rate)))
-        (two-pi (* 2.0d0 Pi)))
+  (let ((samples-per-symbol (round (/ sample-rate symbol-rate))))
     (lambda (iq-samples)
       (let* ((num-symbols (floor (/ (length iq-samples)
                                     samples-per-symbol)))
@@ -120,7 +118,7 @@
                   (dotimes (j samples-per-symbol)
                     (let* ((idx (+ offset j))
                            (tm (/ idx sample-rate))
-                           (phase (* two-pi freq tm))
+                           (phase (* +two-pi+ freq tm))
                            (sample (aref iq-samples idx))
                            (mix-real (cos phase))
                            (mix-imag (- (sin phase)))
@@ -193,8 +191,7 @@
                               (positive-frequency t))
   ;; output array: (# of samples) x n
   (let* ((len (length iq-samples))
-         (result (make-array (list len n) :initial-element 0.0d0))
-         (two-pi (* 2d0 pi)))
+         (result (make-array (list len n) :initial-element 0.0d0)))
     (dotimes (i len)
       (dotimes (tone n)
         (let* ((freq-offset (if positive-frequency ; wtf
@@ -389,11 +386,12 @@
                          (decf phase +two-pi+))))))
         out))))
 
-
+;; binary fsk
+@export
 (defun make-fsk-modulator (&key (tone-distance 1000.0d0)
                              (sample-rate 44100.0d0)
                              (samples-per-symbol 100)
-                             (center-frequency 1000.0d0))
+                             (center-frequency 0.0d0))
   (let* ((twopi 6.283185307179586d0)
          (freq0 (- center-frequency (/ tone-distance 2d0)))
          (freq1 (+ center-frequency (/ tone-distance 2d0)))
