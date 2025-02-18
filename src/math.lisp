@@ -42,6 +42,27 @@
       1
       0))
 
+;; random sample using the Box–Muller transform
+@export
+(defun random-gaussian (&optional (mean 0.0) (sd 1.0))
+  (declare (type float mean sd))
+  (let* ((u1 (max 1e-30 (random 1.0)))  ; avoid taking (log 0)
+         (u2 (random 1.0))
+         (mag (sqrt (* -2.0 (log u1))))
+         (z0  (* mag (cos (* 2 pi u2)))))
+    (+ mean (* z0 sd))))
+
+;; TODO: this might fit better elsewhere
+@export
+(defun add-channel-noise (samples &key (mean 0.0) (stddev 0.1))
+  (let ((n (length samples))
+        (result (make-array (length samples) :initial-element 0.0)))
+    (loop for i from 0 below n do
+      (setf (aref result i)
+            (+ (aref samples i)
+               (random-gaussian mean stddev))))
+    result))
+
 (defparameter +max-float-diff+ 0.0002)
 
 @export
@@ -505,6 +526,42 @@ eexport
           (mapcar #'array-max-min
                   ar-list)))
 
+;; works for complex too
+@export
+(defun ar-incf (ar-added-into ar-to-add)
+  (assert (= (length ar-added-into) (length ar-to-add)))
+  (dotimes (i (length ar-added-into))
+    (incf (aref ar-added-into i)
+          (aref ar-to-add i))))
+
+@export
+(defun ar-scaleby! (ar scale)
+  (dotimes (i (length ar))
+    (setf (aref ar i)
+          (* scale
+             (aref ar i))))
+  ar)
+
+@export
+(defun mags! (c-ar)
+  (dotimes (i (array-dimension c-ar 0))
+    (setf (aref c-ar i)
+          (let ((v (aref c-ar i)))
+            (sqrt
+             (+ (expt (realpart v) 2)
+                (expt (imagpart v) 2)))))))
+
+@export
+(defun reals! (c-ar)
+  (dotimes (i (array-dimension c-ar 0))
+    (setf (aref c-ar i)
+          (realpart (aref c-ar i)))))
+
+@export
+(defun rand-bytes! (ar)
+  (dotimes (i (array-dimension ar 0))
+    (setf (aref ar i)
+          (random 255))))
 
 @export
 (defun next-power-of-two (n)

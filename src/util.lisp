@@ -103,3 +103,7 @@ defaults to CHAR= (for case-sensitive comparison)."
                                     (expt (- x mean) 2))
                                     float-list))
               n))))))
+
+@export
+(defun time-in-light-meters (sec)
+  (* 3d8 sec))

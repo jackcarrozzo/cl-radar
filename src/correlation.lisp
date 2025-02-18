@@ -339,3 +339,68 @@ root gives how many times thru the sequeuence it goes during length
            (corr-r (sliding-complex-correlation ref-slice sigs search-n)))
       (format t "-- corr-r came back len ~a.~%" (length corr-r))
       (vgplot:plot corr-r))))
+
+
+;; TODO: where should this go?
+(defun linear-interp (arr x)
+  (let* ((floor-x (floor x))
+         (alpha   (- x floor-x)))
+    (cond
+      ;; if entirely out of the array on the low side or high side:
+      ((or (< floor-x 0) (>= floor-x (length arr)))
+       0.0)
+      (t
+       (let ((next-x (1+ floor-x)))
+         ;; if we don't have a next sample, it's out of range, return 0.0
+         (if (>= next-x (length arr))
+             0.0
+             ;; interpolation:
+             (let ((left-sample  (aref arr floor-x))
+                   (right-sample (aref arr next-x)))
+               (+ (* left-sample  (- 1 alpha))
+                  (* right-sample alpha)))))))))
+
+(defun linear-interp-complex (samples pos)
+  "return the interpolated complex sample at floating-point index pos
+   using linear interpolation. samples is an array of complex numbers;
+   pos may be fractional. boundary conditions are handled by clamping
+   to the nearest valid index."
+  (let* ((n (length samples))
+         ;; clamp pos to [0..n-1]
+         (pos (max 0 (min pos (- n 1))))
+         (i0 (truncate pos))
+         (frac (- pos i0)))
+    (if (>= i0 (1- n))
+        ;; if i0 is the last sample or beyond, return that sample
+        (aref samples (1- n))
+        ;; else interpolate between samples[i0] and samples[i0+1]
+        (let* ((s0 (aref samples i0))
+               (s1 (aref samples (1+ i0)))
+               (re0 (realpart s0))
+               (im0 (imagpart s0))
+               (re1 (realpart s1))
+               (im1 (imagpart s1))
+               (ire (+ re0 (* frac (- re1 re0))))
+               (iim (+ im0 (* frac (- im1 im0)))))
+          (complex ire iim)))))
+
+(defun correlation-at-offset (ref rec offset)
+  (loop for i from 0 below (length ref)
+        sum (* (aref ref i)
+               (linear-interp rec (+ i offset)))))
+
+(defun correlate-signals (ref rec &key (window-size nil) (step-size 1.0))
+  (let* ((n-ref  (length ref))
+         (n-rec  (length rec))
+         ;; default window-size if not provided:
+         ;; up to the point where the reference no longer fits.
+         (ws     (or window-size
+                     (max 0 (- n-rec n-ref))))
+         ;; how many steps we'll evaluate:
+         (n-steps (truncate (1+ (/ ws step-size)))))
+    (let ((result (make-array n-steps :initial-element 0.0)))
+      (loop for i from 0 below n-steps
+            do (let ((offset (* i step-size)))
+                 (setf (aref result i)
+                       (correlation-at-offset ref rec offset))))
+      result)))
