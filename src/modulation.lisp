@@ -389,7 +389,7 @@
 ;; binary fsk
 @export
 (defun make-fsk-modulator (&key (tone-distance 1000.0d0)
-                             (sample-rate 44100.0d0)
+                             (sample-rate 48000.0d0)
                              (samples-per-symbol 100)
                              (center-frequency 0.0d0))
   (let* ((twopi 6.283185307179586d0)
