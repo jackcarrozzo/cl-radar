@@ -454,3 +454,34 @@
                        by sec-per-sample
                        collecting x)))
     (vgplot:plot x-axis bb-reals "real" x-axis bb-imags "imag")))
+
+;; very pretty
+@export
+(defun graph-ask-fft (&key (sample-rate 48000) (symbol-rate 3000) (num-symbols 64) (cfreq -5000))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (cl-radar.corr::make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (declare (ignore gold-repeat-n))
+    (let* ((samp-per-sym (/ (float sample-rate) symbol-rate))
+           (num-samples (* num-symbols samp-per-sym))
+           (ask-mod (make-ask-modulator sample-rate symbol-rate cfreq -20.0))
+           (gold-code (make-array num-symbols :initial-contents
+                                  (funcall gold-gen num-symbols)))
+           (bb-samples (funcall ask-mod gold-code))
+           (bb-fft (bordeaux-fft:windowed-fft bb-samples (/ (length bb-samples) 2)
+                                              (length bb-samples)))
+           (fft-mags (cl-radar.math:fft-swap
+                      (cl-radar.math:complex-mags bb-fft))))
+      (format t "-- ~a symbols, ~a samples.~%" num-symbols num-samples)
+      (format t "----: ~a~%" (subseq bb-samples 0 6))
+      (format t "-- fft got back ~a~%" (length bb-fft))
+      (format t "---: ~a~%" (subseq bb-fft 0 6))
+
+      (let* ((fft-len (length bb-fft))
+             (f-start (* -1 (/ sample-rate 2.0)))
+             (f-end (/ sample-rate 2.0))
+             (d-f (/ sample-rate fft-len)))
+        (vgplot:plot
+         (loop for x from f-start to f-end by d-f
+               collecting x)
+         fft-mags)))))
+;; TODO: figure out why this is not just the left side ^
