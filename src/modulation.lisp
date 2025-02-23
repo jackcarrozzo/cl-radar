@@ -415,3 +415,42 @@
                                   (complex (cos phase0) (sin phase0))
                                   (complex (cos phase1) (sin phase1))))))
         result))))
+
+
+;; cw on/off keying
+@export
+(defun make-ask-modulator (sample-rate symbol-rate freq &optional (low-level-db -20.0))
+  (let* ((samples-per-symbol (floor (/ sample-rate symbol-rate)))
+         ;; (pi (acos -1.0d0)) ;; erm.......
+         (low-lin (if low-level-db
+                      (exp (* (/ low-level-db 20d0) (log 10d0)))
+                      0d0)))
+    (lambda (symbols)
+      (let* ((num-samples (* samples-per-symbol (length symbols)))
+             (out (make-array num-samples :initial-element #c(0.0d0 0.0d0))))
+        (loop for i from 0 below (length symbols) do
+          (let ((amplitude (if (eql (aref symbols i) 1)
+                               1d0
+                               low-lin)))
+            (loop for s from 0 below samples-per-symbol do
+              (let* ((tm (/ (+ s (* i samples-per-symbol)) sample-rate))
+                     (phase (* 2d0 Pi freq tm))
+                     (re (* amplitude (cos phase)))
+                     (im (* amplitude (sin phase))))
+                (setf (aref out (+ s (* i samples-per-symbol))) (complex re im))))))
+        out))))
+
+@export
+(defun graph-ask-waves (&key (sample-rate 48000) (num-symbols 8))
+  (declare (ignore num-symbols))
+  (let* ((ask-mod (make-ask-modulator sample-rate 6000 3000 -20.0))
+         (input-syms #(1 0 1 1 0 0 0 1))
+         (bb-samples (funcall ask-mod input-syms))
+         (bb-reals (cl-radar.math:array-mapcar #'realpart bb-samples))
+         (bb-imags (cl-radar.math:array-mapcar #'imagpart bb-samples))
+         (sec-per-sample (/ 1.0 sample-rate))
+         (x-axis (loop for x from 0.0 below
+                                      (* sec-per-sample (length bb-samples))
+                       by sec-per-sample
+                       collecting x)))
+    (vgplot:plot x-axis bb-reals "real" x-axis bb-imags "imag")))

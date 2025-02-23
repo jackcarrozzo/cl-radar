@@ -209,13 +209,14 @@ root gives how many times thru the sequeuence it goes during length
 
 ;; also works on arrays of reals
 @export
-(defun sliding-complex-correlation (ref-ar sig-ar &optional (search-n 100))
+(defun sliding-complex-correlation (ref-ar sig-ar &optional (search-n 100) (compare-fn #'complex-pt-correlation))
   (let ((r (make-array search-n :initial-element 0.0d0)))
     (dotimes (i search-n)
       (setf (aref r i)
             (complex-correlation
              (subseq sig-ar i) ;; sig-ar starts farther fwd each time
-             (subseq ref-ar 0 (- (length ref-ar) i))))) ;; ref-ar one shorter each time so it can slide
+             (subseq ref-ar 0 (- (length ref-ar) i)) ;; ref-ar one shorter each time so it can slide
+             compare-fn)))
     r))
 
 ;; this one is remarkable!
