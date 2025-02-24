@@ -485,9 +485,13 @@
                collecting x)
          fft-mags)))))
 ;; TODO: figure out why this is not just the left side ^
+;;  answer: windowed-fft doesnt like our complex float array input and is just using reals
+;;    see below for better one
 
+;; pretty graphs
 @export
-(defun graph-ask-fft-split (&key (sample-rate 48000) (symbol-rate 3000) (num-symbols 64) (cfreq -5000))
+(defun graph-ask-fft-split (&key (sample-rate 48000) (symbol-rate 3000)
+                              (num-symbols 64) (cfreq -5000) (all-ones-p nil))
   (multiple-value-bind (gold-gen gold-repeat-n)
       (cl-radar.corr::make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
     (declare (ignore gold-repeat-n))
@@ -496,11 +500,16 @@
            (ask-mod (make-ask-modulator sample-rate symbol-rate cfreq -20.0))
            (gold-code (make-array num-symbols :initial-contents
                                   (funcall gold-gen num-symbols)))
-           (bb-samples (funcall ask-mod gold-code))
-           (prev-pow-2 (expt 2 (1- (ceiling (/ (float (log (length bb-samples))) (float (log 2)))))))
-           (bb-fft (bordeaux-fft:windowed-fft bb-samples (/ prev-pow-2 2)
-                                              prev-pow-2))
+           (bb-samples (funcall ask-mod (if all-ones-p
+                                            (make-array num-symbols :initial-element 1)
+                                            gold-code)))
+           (bb-csb (cl-radar.math::convert-to-padded-csarray bb-samples))
+           ;;(prev-pow-2 (expt 2 (1- (ceiling (/ (float (log (length bb-samples))) (float (log 2)))))))
+           ;;(bb-fft (bordeaux-fft:windowed-fft bb-samples (/ prev-pow-2 2)
+           ;;                                   prev-pow-2))
+           (bb-fft (bordeaux-fft:fft bb-csb))
            (fft-swapped (cl-radar.math:fft-swap bb-fft))
+           (fft-mags (cl-radar.math:complex-mags fft-swapped))
            (fft-reals (cl-radar.math:array-mapcar #'realpart fft-swapped))
            (fft-imags (cl-radar.math:array-mapcar #'imagpart fft-swapped)))
       (format t "-- ~a symbols, ~a samples.~%" num-symbols num-samples)
@@ -520,6 +529,130 @@
          "real"
          x-axis
          fft-imags
-         "imag")))))
+         "imag"
+         x-axis
+         fft-mags
+         "mags")))))
 
 ;; (cl-radar.mod::graph-ask-fft-split :symbol-rate 8000)
+;; (cl-radar.mod::graph-ask-fft-split :symbol-rate 8000 :all-ones-p t)
+;; (cl-radar.mod::graph-ask-fft-split :symbol-rate 3200)
+
+
+@export
+(defun make-bpsk-modulator (sample-rate symbol-rate freq-offset)
+  (let ((sps (round (/ sample-rate symbol-rate)))
+        (omega (/ (* 2 pi freq-offset) sample-rate)))
+    (lambda (symbols)
+      (let ((output (make-array (* (length symbols) sps)
+                                :initial-element #c(0.0d0 0.0d0))))
+        (loop for i from 0 below (length symbols) do
+          (let ((phase-offset (if (zerop (aref symbols i))
+                                  0d0
+                                  pi)))
+            (loop for j from 0 below sps do
+              (let* ((index (+ (* i sps) j))
+                     (phase (+ (* index omega) phase-offset)))
+                (setf (aref output index)
+                      (complex (cos phase) (sin phase)))))))
+        output))))
+
+@export
+(defun graph-bpsk-signal ()
+  (let* ((bpsk-mod (make-bpsk-modulator 48000 350 600))
+         (in-syms #(1 0 0 1))
+         (bb-samples (funcall bpsk-mod in-syms)))
+    (cl-radar.math::graph-complex-ar bb-samples)))
+
+
+(defun graph-bpsk-fft (&key (sample-rate 48000) (symbol-rate 3000)
+                         (num-symbols 64) (cfreq -5000) (all-ones-p nil)
+                         (plot-all-p nil))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (cl-radar.corr::make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (declare (ignore gold-repeat-n))
+    (let* ((samp-per-sym (/ (float sample-rate) symbol-rate))
+           (num-samples (* num-symbols samp-per-sym))
+           (bpsk-mod (make-bpsk-modulator sample-rate symbol-rate cfreq))
+           (gold-code (make-array num-symbols :initial-contents
+                                  (funcall gold-gen num-symbols)))
+           (bb-samples (funcall bpsk-mod (if all-ones-p
+                                            (make-array num-symbols :initial-element 1)
+                                            gold-code)))
+           (bb-csb (cl-radar.math::convert-to-padded-csarray bb-samples))
+           (bb-fft (bordeaux-fft:fft bb-csb))
+           (fft-swapped (cl-radar.math:fft-swap bb-fft))
+           (fft-mags (cl-radar.math:complex-mags fft-swapped))
+           (fft-reals (cl-radar.math:array-mapcar #'realpart fft-swapped))
+           (fft-imags (cl-radar.math:array-mapcar #'imagpart fft-swapped)))
+      (format t "-- ~a symbols, ~a samples.~%" num-symbols num-samples)
+
+      (let* ((fft-len (length bb-fft))
+             (f-start (* -1 (/ sample-rate 2.0)))
+             (f-end (/ sample-rate 2.0))
+             (d-f (/ sample-rate fft-len))
+             (x-axis (loop for x from f-start to f-end by d-f
+                           collecting x)))
+        (if plot-all-p
+            (vgplot:plot
+             x-axis
+             fft-reals
+             "real"
+             x-axis
+             fft-imags
+             "imag"
+             x-axis
+             fft-mags
+             "mags")
+            (vgplot:plot x-axis fft-mags "mags"))))))
+
+;; more pretty graphs
+@export
+(defun graph-bpsk-fft-chunked (&key (sample-rate 48000) (symbol-rate 12000)
+                                 (num-symbols 1024) (cfreq -10000) (all-ones-p nil))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (cl-radar.corr::make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (declare (ignore gold-repeat-n))
+    (let* ((samp-per-sym (/ (float sample-rate) symbol-rate))
+           (num-samples (* num-symbols samp-per-sym))
+           (bpsk-mod (make-bpsk-modulator sample-rate symbol-rate cfreq))
+           (gold-code (make-array num-symbols :initial-contents
+                                  (funcall gold-gen num-symbols)))
+           (bb-samples (funcall bpsk-mod (if all-ones-p
+                                            (make-array num-symbols :initial-element 1)
+                                            gold-code)))
+           (fft-summed (complex-fft-in-chunks 256 bb-samples))
+           (fft-swapped (cl-radar.math:fft-swap fft-summed)))
+      (format t "-- ~a symbols, ~a samples.~%" num-symbols num-samples)
+      (format t "-- fft-swapped ~a.~%" (length fft-swapped))
+
+      (let* ((fft-len (length fft-swapped))
+             (f-start (* -1 (/ sample-rate 2.0)))
+             (f-end (/ sample-rate 2.0))
+             (d-f (/ sample-rate fft-len))
+             (x-axis (loop for x from f-start to f-end by d-f
+                           collecting x)))
+        (vgplot:plot x-axis fft-swapped "mag")))))
+
+;; (cl-radar.mod::graph-bpsk-fft-chunked :cfreq -10000 :symbol-rate 12000)
+;; (cl-radar.mod::graph-bpsk-fft-chunked :cfreq -10000 :symbol-rate 6000)
+
+
+;; TODO: standardized wrapper for exercising and graphing and ffting etc these
+;;  modulations; include fft summing instead of one giant fft
+
+;; TODO: put this somewhere
+(defun complex-fft-in-chunks (fft-size in-ar)
+  (let ((num-chunks (floor (/ (length in-ar) fft-size))))
+    (format t "-- fft-size ~a and input len ~a, so doing ~a ffts (using ~a samples).~%"
+            fft-size (length in-ar) num-chunks (* num-chunks fft-size))
+
+    (let ((fft-sum (make-array fft-size :initial-element 0.0d0)))
+      (loop for chunk-start from 0 below (length in-ar) by fft-size
+            do
+               (let* ((this-chunk (subseq in-ar chunk-start (+ chunk-start fft-size)))
+                      (bb-csb (cl-radar.math::convert-to-padded-csarray this-chunk))
+                      (bb-fft (bordeaux-fft:fft bb-csb))
+                      (fft-mags (cl-radar.math:complex-mags bb-fft)))
+                 (cl-radar.math::ar-incf fft-sum fft-mags)))
+      fft-sum)))

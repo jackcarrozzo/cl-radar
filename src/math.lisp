@@ -174,13 +174,48 @@ eexport
 
 @export
 (defun convert-to-csarray (in-ar)
-  (let ((r (make-carray (length in-ar))))
+  (let ((r (make-csarray (length in-ar))))
     (dotimes (i (length r))
       (setf (aref r i)
             (complex
              (float (realpart (aref in-ar i)) 0.0d0) ;; convert to double-float
-             (float (imagpart (aref in-ar i)) 0.0d0))))))
+             (float (imagpart (aref in-ar i)) 0.0d0))))
+    r))
 
+@export
+(defun convert-to-padded-csarray (in-ar &optional pad-to-n)
+  (let ((r (make-csarray (or pad-to-n
+                             (next-power-of-two (length in-ar))))))
+    (dotimes (i (length in-ar))
+      (setf (aref r i)
+            (complex
+             (float (realpart (aref in-ar i)) 0.0d0) ;; convert to double-float
+             (float (imagpart (aref in-ar i)) 0.0d0))))
+    r))
+
+@export
+(defun graph-complex-ar (in-ar)
+  (let ((mags (complex-mags in-ar))
+        (reals (array-mapcar #'realpart in-ar))
+        (imags (array-mapcar #'imagpart in-ar))
+        (x-ax (loop for i from 0 below (length in-ar) collecting i)))
+    (vgplot:plot x-ax mags "mags" x-ax reals "reals" x-ax imags "imags")))
+
+@export
+(defun graph-complex-fft (in-ar &optional sample-rate)
+  (let* ((bb-csb (convert-to-padded-csarray in-ar))
+         (bb-fft (bordeaux-fft:fft bb-csb))
+         (fft-swapped (cl-radar.math:fft-swap bb-fft))
+         (fft-mags (cl-radar.math:complex-mags fft-swapped)))
+    (if sample-rate
+        (let* ((fft-len (length bb-fft))
+               (f-start (* -1 (/ sample-rate 2.0)))
+               (f-end (/ sample-rate 2.0))
+               (d-f (/ sample-rate fft-len))
+               (x-axis (loop for x from f-start to f-end by d-f
+                             collecting x)))
+          (vgplot:plot x-axis fft-mags "mag"))
+        (vgplot:plot fft-mags))))
 
 
 ;; ref its highest value; in place
