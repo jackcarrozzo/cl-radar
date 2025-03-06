@@ -165,7 +165,7 @@
                                (float-array-mostly-equal-p a1 a2)))))))
 
 ;; bordeaux-fft internal format compatible complex-sample arrays
-eexport
+@export
 (defmacro make-csarray (n &optional initial-contents)
   (let ((args `(make-array ,n :element-type 'bordeaux-fft:complex-sample)))
     (if initial-contents

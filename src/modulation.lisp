@@ -564,6 +564,7 @@
          (bb-samples (funcall bpsk-mod in-syms)))
     (cl-radar.math::graph-complex-ar bb-samples)))
 
+(defvar *last-complex-bb-samples* nil)
 
 (defun graph-bpsk-fft (&key (sample-rate 48000) (symbol-rate 3000)
                          (num-symbols 64) (cfreq -5000) (all-ones-p nil)
@@ -577,8 +578,8 @@
            (gold-code (make-array num-symbols :initial-contents
                                   (funcall gold-gen num-symbols)))
            (bb-samples (funcall bpsk-mod (if all-ones-p
-                                            (make-array num-symbols :initial-element 1)
-                                            gold-code)))
+                                             (make-array num-symbols :initial-element 1)
+                                             gold-code)))
            (bb-csb (cl-radar.math::convert-to-padded-csarray bb-samples))
            (bb-fft (bordeaux-fft:fft bb-csb))
            (fft-swapped (cl-radar.math:fft-swap bb-fft))
@@ -586,6 +587,8 @@
            (fft-reals (cl-radar.math:array-mapcar #'realpart fft-swapped))
            (fft-imags (cl-radar.math:array-mapcar #'imagpart fft-swapped)))
       (format t "-- ~a symbols, ~a samples.~%" num-symbols num-samples)
+      (setf *last-complex-bb-samples* bb-samples)
+      (format t "---- bb-samples ~a~%" (subseq bb-samples 0 16))
 
       (let* ((fft-len (length bb-fft))
              (f-start (* -1 (/ sample-rate 2.0)))
@@ -605,6 +608,88 @@
              fft-mags
              "mags")
             (vgplot:plot x-axis fft-mags "mags"))))))
+
+;; TODO: put these somewhere
+
+;; scale -1.0 to 1.0 over 0 to 65535 inclusive
+(defun scale-to-ushort (x)
+  (let* ((val (round (* 65535 (/ (+ x 1.0d0) 2.0d0)))))
+    (min (max val 0) 65535)))
+
+(defun scale-to-sshort (x)
+  (let* ((val (round (* 65535 (/ (+ x 1.0d0) 2.0d0)))))
+    (- (min (max val 0) 65535)
+       32768)))
+
+;; real then imag, MSB first (big endian)
+(defun write-complex-array-to-binary-file (fpath complex-data)
+  (with-open-file (stream fpath
+                          :direction :output
+                          :element-type '(unsigned-byte 8)
+                          :if-exists :supersede
+                          :if-does-not-exist :create)
+    (loop
+      for c across complex-data do
+        (let ((r (scale-to-ushort (realpart c)))
+              (i (scale-to-ushort (imagpart c))))
+          (write-byte (ldb (byte 8 8) r) stream)  ; high byte of real
+          (write-byte (ldb (byte 8 0) r) stream)  ; low byte of real
+          (write-byte (ldb (byte 8 8) i) stream)  ; high byte of imag
+          (write-byte (ldb (byte 8 0) i) stream))))
+  (format t "-- wrote ~a.~%" fpath))
+
+;; (cl-radar.mod::graph-bpsk-fft :all-ones-p t :sample-rate 25e6 :cfreq -1e6 :num-symbols 100)
+;; (cl-radar.mod::write-complex-array-to-binary-file "/Users/jackc/out.iq.short.bin" cl-radar.mod::*last-complex-bb-samples*)
+
+(defvar *last-pre-i* nil)
+(defvar *last-pre-q* nil)
+
+(defun write-sc16-sine-to-file (fpath num-samples sample-rate freq-hz &optional (amplitude 1.0))
+  (let ((omega (/ (* 2 Pi freq-hz) sample-rate))
+        (pre-i (make-array 1000 :initial-element 0.0d0))
+        (pre-q (make-array 1000 :initial-element 0.0d0)))
+    (with-open-file (stream fpath
+                            :direction :output
+                            :element-type '(unsigned-byte 8)
+                            :if-exists :supersede
+                            :if-does-not-exist :create)
+      (loop for i from 0 below num-samples
+            do
+               (let* ((phase (* i omega))
+                      (real-val (* amplitude (cos phase)))
+                      (imag-val (* amplitude (sin phase)))
+                      (real-short (scale-to-sshort real-val))
+                      (imag-short (scale-to-sshort imag-val)))
+                 (when (< i 1000)
+                   (setf (aref pre-i i) real-val)
+                   (setf (aref pre-q i) imag-val))
+                 (let* ((q-shifted (+ imag-short 32768))
+                        (q-msb-val (logand 127 (round (/ (abs q-shifted) 256))))
+                        (q-msb-neg (logior 128 q-msb-val)))
+                   ;;(if (< imag-val 0.0)                            ;; MSB
+                   ;;    (write-byte (ldb (byte 8 0) q-msb-neg) stream)
+                   ;;    (write-byte (ldb (byte 8 0) q-msb-val) stream))
+                   (write-byte (ldb (byte 8 8) q-shifted) stream) ;; was as above
+                   (write-byte (ldb (byte 8 0) imag-short) stream) ;; LSB
+                   )
+
+                 (let* ((i-shifted (+ real-short 32768))
+                        (i-msb-val (logand 127 (round (/ (abs i-shifted) 256))))
+                        (i-msb-neg (logior 128 i-msb-val)))
+                   (if (< real-val 0.0)                            ;; MSB
+                       (write-byte (ldb (byte 8 0) i-msb-neg) stream)
+                       (write-byte (ldb (byte 8 0) i-msb-val) stream))
+                   (write-byte (ldb (byte 8 0) real-short) stream) ;; LSB
+                   ))))
+    (setf *last-pre-i* pre-i)
+    (setf *last-pre-q* pre-q))
+
+  (format t "-- wrote ~a.~%" fpath))
+
+(defun plot-parts ()
+  (let ((x-axis (loop for i below (length *last-pre-i*) collecting i)))
+    (vgplot:plot x-axis *last-pre-i* x-axis *last-pre-q*)))
+
 
 ;; more pretty graphs
 @export
@@ -637,6 +722,46 @@
 ;; (cl-radar.mod::graph-bpsk-fft-chunked :cfreq -10000 :symbol-rate 12000)
 ;; (cl-radar.mod::graph-bpsk-fft-chunked :cfreq -10000 :symbol-rate 6000)
 
+@export
+(defun graph-bpsk-fft-chunked-filtered (&key (sample-rate 48000) (symbol-rate 12000)
+                                 (num-symbols 2048) (cfreq -10000) (all-ones-p nil))
+  (multiple-value-bind (gold-gen gold-repeat-n)
+      (cl-radar.corr::make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (declare (ignore gold-repeat-n))
+    (let* ((samp-per-sym (/ (float sample-rate) symbol-rate))
+           (num-samples (* num-symbols samp-per-sym))
+           (bpsk-mod (make-bpsk-modulator sample-rate symbol-rate cfreq))
+           (gold-code (make-array num-symbols :initial-contents
+                                  (funcall gold-gen num-symbols)))
+           (bb-samples (funcall bpsk-mod (if all-ones-p
+                                            (make-array num-symbols :initial-element 1)
+                                            gold-code)))
+           (bb-filter (cl-radar.filter::make-complex-fir-bandpass-filter
+                       sample-rate -10000
+                       44000 ;; 4400 gives one lobe on either side; main lobe about 2500
+                       11)) ;; 33 still serious, 101 very very sharp
+           (bb-filtered (cl-radar.math:array-mapcar (lambda (v) (funcall bb-filter v)) bb-samples))
+           ;;(fft-summed (complex-fft-in-chunks 256 bb-samples))
+           (fft-summed (complex-fft-in-chunks 256 bb-filtered))
+           (fft-swapped (cl-radar.math:fft-swap fft-summed)))
+      (format t "-- ~a symbols, ~a samples.~%" num-symbols num-samples)
+      (format t "-- fft-swapped ~a.~%" (length fft-swapped))
+
+      ;;(loop for i from 0 below 10
+      ;;      do
+      ;;      (format t "---- ~a~t~a~%" (aref bb-samples i) (aref bb-filtered i)))
+
+      (let* ((fft-len (length fft-swapped))
+             (f-start (* -1 (/ sample-rate 2.0)))
+             (f-end (/ sample-rate 2.0))
+             (d-f (/ sample-rate fft-len))
+             (x-axis (loop for x from f-start to f-end by d-f
+                           collecting x)))
+        (vgplot:plot x-axis fft-swapped "mag")))))
+
+#|
+(cl-radar.mod::graph-bpsk-fft-chunked-filtered :cfreq -10000 :symbol-rate 5000)
+|#
 
 ;; TODO: standardized wrapper for exercising and graphing and ffting etc these
 ;;  modulations; include fft summing instead of one giant fft

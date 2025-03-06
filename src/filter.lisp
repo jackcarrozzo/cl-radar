@@ -248,9 +248,6 @@
 
 @export
 (defun iir-biquad-highpass-coeffs (sample-rate cutoff &key (q (/ 1.0 (sqrt 2.0))))
-  "compute 2nd-order IIR high-pass filter coefficients (RBJ cookbook).
-   returns (b0 b1 b2 a1 a2), already normalized by a0.
-   Q defaults to 1/sqrt(2) for Butterworth-like response."
   (let* ((omega (* 2.0 pi (/ cutoff sample-rate)))  ; 2 * pi * (fc/fs)
          (cosw (cos omega))
          (sinw (sin omega))
@@ -399,3 +396,49 @@ caught WARNING:
     (dolist (in '(#C(1 0) #C(1 1) #C(0.5 -0.5) #C(-1 1) #C(0 0)))
       (format t "~&in=~a => out=~a"
               in (funcall iir-hpf-complex in)))))
+
+
+;;; --- bandpasses
+
+;; return a closure that implements a complex fir bandpass
+@export
+(defun make-complex-fir-bandpass-filter (sample-rate center-frequency bandwidth order)
+  (labels
+      ((safe-sinc (x)
+         ;; return sin(x)/x, handling x=0
+         (if (zerop x) 1d0 (/ (sin x) x)))
+       (complex-exp (theta)
+         ;; return e^(j*theta) as a complex
+         (complex (cos theta) (sin theta))))
+    (let* ((coeffs
+             (let ((c (make-array order :initial-element #c(0.0d0 0.0d0)))
+                   (m (floor (/ order 2)))
+                   (bw (/ bandwidth sample-rate))
+                   (fc (/ center-frequency sample-rate)))
+               (dotimes (n order)
+                 (let* ((k (- n m))
+                        ;; windowed-sinc magnitude for half-bandwidth
+                        (x (* pi (* 0.5d0 bw) k))
+                        (val (if (zerop k)
+                                 bw
+                                 (* 2d0 (* 0.5d0 bw) (safe-sinc x))))
+                        ;; shift to center-frequency by multiplying e^(j*2*pi*fc*k)
+                        (shift (complex-exp (* 2d0 pi fc k)))
+                        ;; simple hann window
+                        (win (* 0.5d0
+                                (- 1d0 (cos (/ (* 2d0 pi n)
+                                               (1- order)))))))
+                   (setf (aref c n) (* val shift win))))
+               c))
+           ;; filter state
+           (state (make-array order :initial-element #c(0.0d0 0.0d0))))
+      ;; return a function that filters one complex sample at a time
+      (lambda (sample)
+        ;; shift the state by one
+        (replace state state :start1 1 :end1 order :start2 0 :end2 (1- order))
+        (setf (aref state 0) sample)
+        ;; compute dot product of coeffs and state
+        (let ((acc #c(0.0d0 0.0d0)))
+          (dotimes (i order acc)
+            (incf acc (* (aref coeffs i) (aref state i))))
+          acc)))))
