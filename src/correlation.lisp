@@ -207,7 +207,19 @@ root gives how many times thru the sequeuence it goes during length
             (funcall compare-fn (aref ref-ar i) (aref sig-ar i))))
     (/ sum (float (length ref-ar)))))
 
+;; wrap ref ar
+@export
+(defun wrapping-complex-correlation (ref-ar sig-ar ref-fwd-offset &optional (compare-fn #'complex-pt-correlation))
+  (let ((sum 0.0d0)
+        (ref-mod (length ref-ar)))
+    (dotimes (i (- (length sig-ar) (length ref-ar)))
+      (let ((ref-i (mod (+ i ref-fwd-offset) ref-mod)))
+        (incf sum
+              (funcall compare-fn (aref ref-ar ref-i) (aref sig-ar i)))))
+    (/ sum (float (length ref-ar)))))
+
 ;; also works on arrays of reals
+;; made for nearly-same-size arrays
 @export
 (defun sliding-complex-correlation (ref-ar sig-ar &optional (search-n 100) (compare-fn #'complex-pt-correlation))
   (let ((r (make-array search-n :initial-element 0.0d0)))
@@ -216,6 +228,20 @@ root gives how many times thru the sequeuence it goes during length
             (complex-correlation
              (subseq sig-ar i) ;; sig-ar starts farther fwd each time
              (subseq ref-ar 0 (- (length ref-ar) i)) ;; ref-ar one shorter each time so it can slide
+             compare-fn)))
+    r))
+
+;; ref much shorter than sig
+@export
+(defun longish-sliding-complex-correlation (ref-ar sig-ar &key (compare-fn #'complex-pt-correlation) (search-n 1500))
+  (let* ((search-max (- (length sig-ar) (length ref-ar)))
+         (r (make-array search-n :initial-element 0.0d0)))
+    (format t "-- longish-sliding-complex-correlation: ref ~a, sig ~a, max search ~a, search-n ~a.~%"
+            (length ref-ar) (length sig-ar) search-max search-n)
+    (dotimes (i search-n)
+      (setf (aref r i)
+            (wrapping-complex-correlation
+             ref-ar sig-ar i
              compare-fn)))
     r))
 
@@ -248,6 +274,25 @@ root gives how many times thru the sequeuence it goes during length
            (corr-r (sliding-complex-correlation ref-slice sigs search-n)))
       (format t "-- corr-r came back len ~a.~%" (length corr-r))
       (vgplot:plot corr-r))))
+
+@export
+(defun gen-some-gold-code (some-n)
+  (multiple-value-bind (gold-gen gold-repeat)
+      (make-gold-code-generator :offset 3 :taps1 '(1 3 4 5 6) :taps2 '(6 4 2 1 0))
+    (declare (ignore gold-repeat))
+    (funcall gold-gen some-n)))
+
+@export
+(defun gold-code-as-c-array (n)
+  (let ((gc (gen-some-gold-code n)))
+    (format t "uint8_t gold_code[]={")
+    (loop for i from 0 below n
+          do
+             (progn
+               (when (> i 0)
+                 (format t ", "))
+               (format t "~a" (nth i gc))))
+    (format t "};~%")))
 
 ;; TODO: this prolly belongs elsewhere
 @export
