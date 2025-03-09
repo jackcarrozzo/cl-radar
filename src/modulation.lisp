@@ -781,3 +781,22 @@
                       (fft-mags (cl-radar.math:complex-mags bb-fft)))
                  (cl-radar.math::ar-incf fft-sum fft-mags)))
       fft-sum)))
+
+
+
+(defun make-bpsk-modulator (sample-rate symbol-rate freq-offset)
+  (let ((sps (round (/ sample-rate symbol-rate)))
+        (omega (/ (* 2 pi freq-offset) sample-rate)))
+    (lambda (symbols)
+      (let ((output (make-array (* (length symbols) sps)
+                                :initial-element #c(0.0d0 0.0d0))))
+        (loop for i from 0 below (length symbols) do
+          (let ((phase-offset (if (zerop (aref symbols i))
+                                  0d0
+                                  pi)))
+            (loop for j from 0 below sps do
+              (let* ((index (+ (* i sps) j))
+                     (phase (+ (* index omega) phase-offset)))
+                (setf (aref output index)
+                      (complex (cos phase) (sin phase)))))))
+        output))))

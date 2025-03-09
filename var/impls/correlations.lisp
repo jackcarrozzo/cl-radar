@@ -135,6 +135,12 @@ Press Ctrl + C to stop streaming...
                                   0.0d0))))
     (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
 
+(defun cs-double-ended-pad (len ar)
+  (let* ((ar-len (length ar))
+         (pad-len (- len ar-len))
+         (r (cl-radar.math:make-csarray len)))
+    (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
+
 #|
 CL-USER> (double-ended-pad 8 #(3.0 4.0 5.0 6.0))
 #(0.0d0 0.0d0 3.0 4.0 5.0 6.0 0.0d0 0.0d0)
@@ -147,6 +153,29 @@ CL-USER> (double-ended-pad 8 #(#c(3.0 4.0) #c(5.0 6.0)))
 #C(0.0d0 0.0d0) #C(0.0d0 0.0d0) #C(0.0d0 0.0d0))
 |#
 
-
+;; s1 and s2 dont have to be the same length, but they both have to be
+;;   less than the same power of 2
 (defun fft-correlation (s1 s2)
-  )
+  (let* ((fft-size (cl-radar.math:next-power-of-two
+                    (max (length s1) (length s2))))
+         (padded-s1 (cs-double-ended-pad fft-size s1))
+         (padded-s2 (cs-double-ended-pad fft-size s2))
+         ;;(fft1 (bordeaux-fft:windowed-fft padded-s1 (/ fft-size 2) fft-size))
+         ;;(fft2 (bordeaux-fft:windowed-fft padded-s2 (/ fft-size 2) fft-size))
+         (fft1 (bordeaux-fft:fft padded-s1))
+         (fft2 (bordeaux-fft:fft padded-s2))
+         (fft2* (cl-radar.math:array-mapcar #'conjugate fft2))
+         (both-fft (cl-radar.math::csarrays-multiply fft1 fft2*))
+         (corr (bordeaux-fft:ifft both-fft)))
+    (cl-radar.math:graph-complex-ar corr)))
+
+(defun graph-gen-vs-recorded-fft ()
+  (let* ((ref-ar (make-bpsk-reference-sig))
+         (sig-ar (read-sc16 "/Users/jackc/txb-1e6_10e6_g40.short.dat"))
+         (corr-ar (fft-correlation
+                   ref-ar
+                   (subseq sig-ar
+                           (- (length sig-ar) (length ref-ar))
+                           (length sig-ar)))))
+    (format t "-- ref-ar is ~a, sig-ar is ~a.~%" (length ref-ar) (length sig-ar))
+    (format t "-- corr-ar is ~a long.~%" (length corr-ar))))
