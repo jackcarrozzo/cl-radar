@@ -73,7 +73,6 @@ Press Ctrl + C to stop streaming...
     bb-samples))
 
 ;; TODO: put this in utils maybe?
-@export
 (defun read-sc16 (filename &optional (little-endian t))
   (with-open-file (stream filename
                           :direction :input
@@ -116,3 +115,38 @@ Press Ctrl + C to stop streaming...
     (format t "-- ref-ar is ~a, sig-ar is ~a.~%" (length ref-ar) (length sig-ar))
     (format t "-- corr-ar is ~a long.~%" (length corr-ar))
     (vgplot:plot corr-ar)))
+
+
+;; ----
+
+;; TODO: try as 2x real-only inputs as well as complex
+
+
+;; make a zero (or #c(0.0 0.0)) valued array and copy ar into it centered within
+(defun double-ended-pad (len ar)
+  (let* ((ar-len (length ar))
+         (pad-len (- len ar-len))
+         (type-of-first-item (type-of (aref ar 0)))
+         (r (make-array
+             len
+             :initial-element (if (and (eql 'cons (type-of type-of-first-item))
+                                       (eql 'complex (first type-of-first-item)))
+                                  #c(0.0d0 0.0d0)
+                                  0.0d0))))
+    (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
+
+#|
+CL-USER> (double-ended-pad 8 #(3.0 4.0 5.0 6.0))
+#(0.0d0 0.0d0 3.0 4.0 5.0 6.0 0.0d0 0.0d0)
+CL-USER> (double-ended-pad 8 #(3.0 4.0 5.0 6.0 7.0))
+#(0.0d0 0.0d0 3.0 4.0 5.0 6.0 7.0 0.0d0)
+CL-USER> (double-ended-pad 8 #(3.0 4.0 5.0 6.0 7.0 8.0))
+#(0.0d0 3.0 4.0 5.0 6.0 7.0 8.0 0.0d0)
+CL-USER> (double-ended-pad 8 #(#c(3.0 4.0) #c(5.0 6.0)))
+#(#C(0.0d0 0.0d0) #C(0.0d0 0.0d0) #C(0.0d0 0.0d0) #C(3.0 4.0) #C(5.0 6.0)
+#C(0.0d0 0.0d0) #C(0.0d0 0.0d0) #C(0.0d0 0.0d0))
+|#
+
+
+(defun fft-correlation (s1 s2)
+  )

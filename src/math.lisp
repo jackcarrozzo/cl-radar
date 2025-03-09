@@ -366,21 +366,21 @@
 
 ;; copy src-ar[start:end] into dst-ar starting at dst-offset
 @export
-(defun array-copy-into (src-ar start end dst-ar &optional (dst-offset 0))
+(defun array-copy-into (src-ar src-start src-end dst-ar &optional (dst-offset 0))
   ;;(format t "ar dim dist-ar 0: ~a~%" (array-dimension dst-ar 0))
   ;;(format t "math end start: ~a~%" (+ (- end start) dst-offset))
 
-  (if (= 0 end)
-      (setf end (length src-ar)))
+  (if (= 0 src-end)
+      (setf src-end (length src-ar)))
 
-  (assert (>= (array-dimension dst-ar 0) (+ (- end start) dst-offset)))
-  ;;(assert (>= (array-dimension src-ar 0) (- end 1)))
-  (assert (>= (array-dimension src-ar 0) end))
-  ;;(assert (> end start))
+  (assert (>= (array-dimension dst-ar 0) (+ (- src-end src-start) dst-offset)))
+  ;;(assert (>= (array-dimension src-ar 0) (- src-end 1)))
+  (assert (>= (array-dimension src-ar 0) src-end))
+  ;;(assert (> src-end src-start))
 
-  (loop for i from start below end
+  (loop for i from src-start below src-end
         do
-           (setf (aref dst-ar (+ (- i start) dst-offset))
+           (setf (aref dst-ar (+ (- i src-start) dst-offset))
                  (aref src-ar i)))
   dst-ar)
 
