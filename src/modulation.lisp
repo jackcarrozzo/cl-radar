@@ -8,7 +8,6 @@
 
 (defconstant +two-pi+ (* 2.0 Pi))
 
-;; create closure for n-ASK mod with continuous phase
 @export
 (defun make-ask-modulator (sample-rate n tone-distance
                            offset symbol-length
@@ -444,6 +443,21 @@
 (defun graph-ask-waves (&key (sample-rate 48000) (num-symbols 8))
   (declare (ignore num-symbols))
   (let* ((ask-mod (make-ask-modulator sample-rate 6000 3000 -20.0))
+         (input-syms #(1 0 1 1 0 0 0 1))
+         (bb-samples (funcall ask-mod input-syms))
+         (bb-reals (cl-radar.math:array-mapcar #'realpart bb-samples))
+         (bb-imags (cl-radar.math:array-mapcar #'imagpart bb-samples))
+         (sec-per-sample (/ 1.0 sample-rate))
+         (x-axis (loop for x from 0.0 below
+                                      (* sec-per-sample (length bb-samples))
+                       by sec-per-sample
+                       collecting x)))
+    (vgplot:plot x-axis bb-reals "real" x-axis bb-imags "imag")))
+
+;; pretty
+@export
+(defun graph-binary-ask-gold-code (&key (sample-rate 10e6) (cfreq -1e6) (symbol-rate 100e3))
+  (let* ((ask-mod (make-ask-modulator sample-rate symbol-rate cfreq -20.0))
          (input-syms #(1 0 1 1 0 0 0 1))
          (bb-samples (funcall ask-mod input-syms))
          (bb-reals (cl-radar.math:array-mapcar #'realpart bb-samples))
