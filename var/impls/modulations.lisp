@@ -62,11 +62,14 @@ CL-USER> (cl-radar.math:array-average (xor-float-arrays (sq-wave 8 16) (sq-wave 
                  (make-array (length vals) :initial-contents vals))))
 
 
-(defun test-xor-freqs (&key (period 64) (n-samples 1900))
-  (let* ((ref (sq-wave period n-samples))
+(defun test-xor-freqs (&key (period 64) (n-samples 1900) (range 0.2))
+  (let* ((halfrange (/ range 2.0))
+         (start (1+ halfrange))
+         (end (abs (1- halfrange)))
+         (ref (sq-wave period n-samples))
          (xs '())
          (vals
-           (loop for df from 1.2 downto 0.8 by 0.002
+           (loop for df from start downto end by 0.002
                  collecting
                  (progn
                    (push df xs)
@@ -76,7 +79,7 @@ CL-USER> (cl-radar.math:array-average (xor-float-arrays (sq-wave 8 16) (sq-wave 
                      (sq-wave (* df period) n-samples
                               :phase-samples (floor (/ period 4)))))))))
 
-    (setf xs (reverse xs))
+    ;;(setf xs (reverse xs))
 
     (format t "-- xs ~a: ~a~%" (length xs) xs)
     (format t "-- vals ~a: ~a~%" (length vals) vals)
