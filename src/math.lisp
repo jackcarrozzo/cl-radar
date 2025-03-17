@@ -193,6 +193,27 @@
              (float (imagpart (aref in-ar i)) 0.0d0))))
     r))
 
+;; make a zero (or #c(0.0 0.0)) valued array and copy ar into it centered within
+@export
+(defun double-ended-pad (len ar)
+  (let* ((ar-len (length ar))
+         (pad-len (- len ar-len))
+         (type-of-first-item (type-of (aref ar 0)))
+         (r (make-array
+             len
+             :initial-element (if (and (eql 'cons (type-of type-of-first-item))
+                                       (eql 'complex (first type-of-first-item)))
+                                  #c(0.0d0 0.0d0)
+                                  0.0d0))))
+    (array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
+
+@export
+(defun cs-double-ended-pad (len ar)
+  (let* ((ar-len (length ar))
+         (pad-len (- len ar-len))
+         (r (make-csarray len)))
+    (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
+
 @export
 (defun graph-complex-ar (in-ar)
   (let ((mags (complex-mags in-ar))

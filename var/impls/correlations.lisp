@@ -122,24 +122,7 @@ Press Ctrl + C to stop streaming...
 ;; TODO: try as 2x real-only inputs as well as complex
 
 
-;; make a zero (or #c(0.0 0.0)) valued array and copy ar into it centered within
-(defun double-ended-pad (len ar)
-  (let* ((ar-len (length ar))
-         (pad-len (- len ar-len))
-         (type-of-first-item (type-of (aref ar 0)))
-         (r (make-array
-             len
-             :initial-element (if (and (eql 'cons (type-of type-of-first-item))
-                                       (eql 'complex (first type-of-first-item)))
-                                  #c(0.0d0 0.0d0)
-                                  0.0d0))))
-    (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
 
-(defun cs-double-ended-pad (len ar)
-  (let* ((ar-len (length ar))
-         (pad-len (- len ar-len))
-         (r (cl-radar.math:make-csarray len)))
-    (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
 
 #|
 CL-USER> (double-ended-pad 8 #(3.0 4.0 5.0 6.0))
@@ -158,10 +141,8 @@ CL-USER> (double-ended-pad 8 #(#c(3.0 4.0) #c(5.0 6.0)))
 (defun fft-correlation (s1 s2)
   (let* ((fft-size (cl-radar.math:next-power-of-two
                     (max (length s1) (length s2))))
-         (padded-s1 (cs-double-ended-pad fft-size s1))
-         (padded-s2 (cs-double-ended-pad fft-size s2))
-         ;;(fft1 (bordeaux-fft:windowed-fft padded-s1 (/ fft-size 2) fft-size))
-         ;;(fft2 (bordeaux-fft:windowed-fft padded-s2 (/ fft-size 2) fft-size))
+         (padded-s1 (cl-radar.math:cs-double-ended-pad fft-size s1))
+         (padded-s2 (cl-radar.math:cs-double-ended-pad fft-size s2))
          (fft1 (bordeaux-fft:fft padded-s1))
          (fft2 (bordeaux-fft:fft padded-s2))
          (fft2* (cl-radar.math:array-mapcar #'conjugate fft2))
@@ -179,6 +160,33 @@ CL-USER> (double-ended-pad 8 #(#c(3.0 4.0) #c(5.0 6.0)))
                            (- (length sig-ar) (length ref-ar))
                            (length sig-ar)))))
     (format t "-- ref-ar is ~a, sig-ar is ~a.~%" (length ref-ar) (length sig-ar))
+    (format t "-- corr-ar is ~a long.~%" (length corr-ar))))
+
+(defun graph-gen-vs-recorded-reals-fft ()
+  (let* ((ref-ar (make-bpsk-reference-sig))
+         (sig-ar (read-sc16 "/Users/jackc/txb-1e6_10e6_g40.short.dat"))
+         (ref-reals (cl-radar.math:convert-to-csarray
+                     (cl-radar.math:array-mapcar #'realpart ref-ar)))
+         (sig-reals (cl-radar.math:convert-to-csarray
+                     (cl-radar.math:array-mapcar #'realpart sig-ar)))
+         (corr-ar (fft-correlation
+                   ref-reals
+                   (subseq sig-reals
+                           (- (length sig-reals) (length ref-reals))
+                           (length sig-reals)))))
+    (format t "-- ref-ar is ~a, sig-ar is ~a.~%" (length ref-reals) (length sig-reals))
+    (format t "-- corr-ar is ~a long.~%" (length corr-ar))))
+
+(defun graph-shifted-ref-fft (&key (shift 2000) (cfreq -100000))
+  (let* ((ref-ar (make-bpsk-reference-sig :cfreq cfreq)) ;; very pretty with 1/10th cfreq, 100k
+         ;;(sig-ar (read-sc16 "/Users/jackc/txb-1e6_10e6_g40.short.dat"))
+         (ref-reals (cl-radar.math:array-mapcar #'realpart ref-ar))
+         (ref-reals-cs (cl-radar.math:convert-to-csarray ref-reals))
+         (sig1-ar (subseq ref-reals-cs 0 (- (length ref-reals-cs) shift)))
+         (sig2-ar (subseq ref-reals-cs shift (length ref-reals-cs)))
+         (corr-ar (fft-correlation sig1-ar sig2-ar)))
+    (format t "-- ref-ar is ~a, sig1-ar is ~a, sig2-ar is ~a.~%"
+            (length ref-ar) (length sig1-ar) (length sig2-ar))
     (format t "-- corr-ar is ~a long.~%" (length corr-ar))))
 
 ;; 500 also good

@@ -407,19 +407,14 @@ root gives how many times thru the sequeuence it goes during length
                   (* right-sample alpha)))))))))
 
 (defun linear-interp-complex (samples pos)
-  "return the interpolated complex sample at floating-point index pos
-   using linear interpolation. samples is an array of complex numbers;
-   pos may be fractional. boundary conditions are handled by clamping
-   to the nearest valid index."
   (let* ((n (length samples))
-         ;; clamp pos to [0..n-1]
          (pos (max 0 (min pos (- n 1))))
          (i0 (truncate pos))
          (frac (- pos i0)))
     (if (>= i0 (1- n))
-        ;; if i0 is the last sample or beyond, return that sample
+        ;; if i0 is the last sample or beyond, just use it
         (aref samples (1- n))
-        ;; else interpolate between samples[i0] and samples[i0+1]
+        ;; otherwise interpolate from samples[i0] to samples[i0+1]
         (let* ((s0 (aref samples i0))
                (s1 (aref samples (1+ i0)))
                (re0 (realpart s0))
@@ -438,11 +433,10 @@ root gives how many times thru the sequeuence it goes during length
 (defun correlate-signals (ref rec &key (window-size nil) (step-size 1.0))
   (let* ((n-ref  (length ref))
          (n-rec  (length rec))
-         ;; default window-size if not provided:
-         ;; up to the point where the reference no longer fits.
+         ;; if no window-size, use
+         ;; up to where ref end
          (ws     (or window-size
                      (max 0 (- n-rec n-ref))))
-         ;; how many steps we'll evaluate:
          (n-steps (truncate (1+ (/ ws step-size)))))
     (let ((result (make-array n-steps :initial-element 0.0)))
       (loop for i from 0 below n-steps
@@ -450,3 +444,6 @@ root gives how many times thru the sequeuence it goes during length
                  (setf (aref result i)
                        (correlation-at-offset ref rec offset))))
       result)))
+
+
+;;;;;;;
