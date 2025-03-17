@@ -167,7 +167,8 @@ CL-USER> (double-ended-pad 8 #(#c(3.0 4.0) #c(5.0 6.0)))
          (fft2* (cl-radar.math:array-mapcar #'conjugate fft2))
          (both-fft (cl-radar.math::csarrays-multiply fft1 fft2*))
          (corr (bordeaux-fft:ifft both-fft)))
-    (cl-radar.math:graph-complex-ar corr)))
+    (cl-radar.math:graph-complex-ar corr)
+    corr))
 
 (defun graph-gen-vs-recorded-fft ()
   (let* ((ref-ar (make-bpsk-reference-sig))
@@ -179,3 +180,23 @@ CL-USER> (double-ended-pad 8 #(#c(3.0 4.0) #c(5.0 6.0)))
                            (length sig-ar)))))
     (format t "-- ref-ar is ~a, sig-ar is ~a.~%" (length ref-ar) (length sig-ar))
     (format t "-- corr-ar is ~a long.~%" (length corr-ar))))
+
+;; 500 also good
+(defun graph-gen-vs-recorded-signals (&optional (graphlen 1000))
+  (let* ((ref-ar (make-bpsk-reference-sig))
+         (sig-ar (read-sc16 "/Users/jackc/txb-1e6_10e6_g40.short.dat"))
+         (ref-section (subseq ref-ar 0 graphlen))
+         (ref-reals (cl-radar.math:array-mapcar (lambda (v) (* 10000 (realpart v)))
+                                                ref-section))
+         (offset (- (length sig-ar) (length ref-ar)))
+         (sig-section (subseq sig-ar
+                              0
+                              graphlen))
+         (sig-reals (cl-radar.math:array-mapcar #'realpart sig-section))
+         (ref-x (loop for x from 0 below (length ref-section) collecting x))
+         (sig-x (loop for x from 0 below (length sig-section) collecting x)))
+
+    (format t "-- ref is ~a, sig-ar is ~a, offset is ~a.~%"
+            (length ref-section) (length sig-section) offset)
+
+    (vgplot:plot ref-x ref-reals "ref" sig-x sig-reals "sig")))
