@@ -294,6 +294,7 @@ CL-USER>
                                         signal-samples-ars-list
                                         windowed-samples-ars-list
                                         from-i to-i)
+
   (let ((relevant-edges (filter-edges-by-bound edge-list from-i to-i))
         (trig-ar (subseq trigger-samples from-i to-i)) ;; TODO:
         ;;(trig-ar (subseq trigger-samples 0 (- to-i from-i)))
@@ -303,6 +304,8 @@ CL-USER>
                        ;;(subseq s-ar 0 (- to-i from-i))
                        )
                      signal-samples-ars-list)))
+    ;;(format t "-- ~a edges in, ~a out.~%" (length edge-list) (length relevant-edges))
+    ;;(format t "-- taking edges from ~a to ~a.~%" from-i to-i)
 
     ;; wtf TODO:
     ;;(format t "-- trig 1 2 3: ~a~%"
@@ -385,6 +388,12 @@ CL-USER>
 
 (cl-radar.image:write-slices-to-png (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :wav-path "/Users/jackc/Projects/cl-radar/data/captrigfast_stereo.wav" :single-out-p nil :ac-trig-p t))
 (cl-radar.fmcw:looping-ws-fft-stream cl-radar.fmcw::*last-fft-slices* :include-waves-every 60 )
+|#
+
+#|
+(cl-radar.image:write-slices-to-png (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :wav-path "~/Projects/cl-radar/data/2025-03-19_shop1.wav" :single-out-p nil :ac-trig-p t))
+
+(cl-radar.fmcw:looping-ws-fft-stream cl-radar.fmcw::*last-fft-slices* :log-p nil :slices-at-once 2 :include-waves-every 100)
 |#
 
 ;; TODO: send chunks of slices at a time (and tell the ui)
@@ -613,9 +622,11 @@ CL-USER>
 
 ;; this is the good new prefered method since it uses a constant ar size chosen at start
 ;;   (obv wont work for variable trigger timing)
+;; should allow filter to ring during power of two padding (TODO: confirm)
 @export
 (defun read-and-slice-and-fft-stereo-wav (&key (wav-path "/Users/jackc/out.wav")
-                                            (debug-p t) (single-out-p t) (ac-trig-p nil))
+                                            (debug-p t) (single-out-p t) (ac-trig-p nil)
+                                            (start-offset 3) (end-offset 3))
   (format t "-- read-and-slice-stereo-wav: ~a~%" wav-path)
 
   (cl-radar.audio:read-wav wav-path t)
@@ -629,12 +640,14 @@ CL-USER>
              (if ac-trig-p
                  (find-ac-edges cl-radar.audio:*last-left-samps*)
                  (find-edges cl-radar.audio:*last-left-samps*)))
-            :start-offset 3 :end-offset 3))
+            :start-offset start-offset :end-offset end-offset))
          (avg-trig-len (getf *last-stats* :avg-offset-trig-period))
          (ar-sample-len (cl-radar.math:next-power-of-two avg-trig-len))
          (sample-ar (make-array ar-sample-len :initial-element 0.0d0))
          (slices nil))
+
     (setf *last-fmcw-edges* trigger-edges)
+    (format t "---- *last-fmcw-edges*: ~a long.~%" (length *last-fmcw-edges*))
 
     (when debug-p
       (format t "--- read-and-slice-stereo-wav: ~a edges in, avg trigger len is ~a, using ar len ~a.~%"
@@ -920,8 +933,8 @@ why does hpf'd data have that giant discontinuity at i=poles/2
      ";radar dist returns;")))
 
 
-(defparameter +trigger-offset-start-samples+ 0) ;; samples between trigger edge and chunk start
-(defparameter +trigger-offset-end-samples+ 0) ;; samples back to end before trigger cross found
+(defparameter +trigger-offset-start-samples+ 3) ;; samples between trigger edge and chunk start
+(defparameter +trigger-offset-end-samples+ 3) ;; samples back to end before trigger cross found
 ;; jc 2024-12-24 seems ok
 
 (defvar *last-edges* nil)
