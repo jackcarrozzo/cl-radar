@@ -658,7 +658,7 @@ CL-USER>
     ;; - complex mags into result ar
     ;; - sum or push result ar
 
-    ;; bordeaux-fft does allow you do pull from a large ar by center and len,
+    ;; bordeaux-fft does allow you to pull from a large ar by center and len,
     ;;   but that wont let us pad
 
     (setf *last-timedomain-slices* nil)

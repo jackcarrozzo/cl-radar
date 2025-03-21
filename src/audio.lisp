@@ -595,6 +595,8 @@ linux:
 arecord -L # from alsa utils
 
 ffmpeg -f alsa -i "hw:CARD=CODEC,DEV=0" -ac 2 -r 4800 -t 10 out.wav
+ffmpeg -c:a pcm_s24le -f alsa -i hw:0 out.wav
+
 
 osx:
 
@@ -965,3 +967,42 @@ TODO:
 -- chop to all same len? even?
 
 |#
+
+
+(defvar *last-chunkgen-phase* 0)
+
+;; made 2ch audio chunks as if from portaudio, pass them down
+;;   the line
+;; TODO: for slow trig rates or short chunks, allow trig windows
+;;   to span chunks (ie, once start is found, accum samples from
+;;   several chunks until stop is found)
+;; TODO: pass metadata like portaudio thru to front end
+
+@export
+(defun chunkgen (&key (chunk-size-samples 1024) (trig-on-len-samples 400)
+                   (trig-off-len-samples 200) (initial-phase *last-chunkgen-phase*)
+                   (sample-rate-hz 48000) (imitate-timing-p t))
+  (let ((r-trig (make-array chunk-size-samples :initial-element 0.0))
+        (r-data (make-array chunk-size-samples :initial-element 0.0))
+        (last-phase 0))
+    (dotimes (i chunk-size-samples)
+      (let ((phase (mod (+ i initial-phase)
+                        (+ trig-on-len-samples trig-off-len-samples))))
+        (setf (aref r-trig i)
+              (if (< phase trig-on-len-samples)
+                  0.5
+                  -0.5))
+        (setf (aref r-data i)
+              (- (random 1.0) 0.5))
+        (setf last-phase phase)))
+    (when imitate-timing-p
+      (sleep (/ (float chunk-size-samples) sample-rate-hz)))
+    (values
+     (list r-trig r-data)
+     (setf *last-chunkgen-phase* last-phase))))
+
+#|
+(cl-radar.audio::chunkgen :chunk-size-samples 64 :trig-on-len-samples 16 :trig-off-len-samples 8)
+|#
+
+;; need to figure out how to handle edges that wrap over chunks
