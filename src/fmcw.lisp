@@ -1267,17 +1267,21 @@ CL-USER> (cl-radar.fmcw::2d-carray-just-reals (make-array '(4 6) :initial-elemen
 
 ;; TODO: if window length if over some limit by x, downsample it so we dont
 ;;  get too many fft bins
+@export
 (defun make-radial-graph-data (&key (num-radials 17)
                                  (carrier-freq-hz 10.0d9)
                                  (element-spacing-m 0.01)
                                  (reals-only-p nil))
   (let* ((wavelength-m (/ 3.0d8 carrier-freq-hz))
-         (rx-data (cl-radar.gen::generate-fmcw-if-samples
+         (rx-data (cl-radar.wavegen:generate-fmcw-if-samples
                    ;;'((10.0 -55.0 10.0) (5.0 45.0 10.0))
                    '((10.0 0.0 10.0)
                      (30.0 45.0 5.0)
                      (50 -50 8.0)
                      (70 -12 10.0)
+                     (35 30 6.0)
+                     (45 15 10)
+                     (65 75 10)
                      )
                    :element-spacing element-spacing-m
                    :center-frequency carrier-freq-hz
@@ -1318,16 +1322,19 @@ CL-USER> (cl-radar.fmcw::2d-carray-just-reals (make-array '(4 6) :initial-elemen
 ;; TODO: with reals only, radial graph shows mirror images across centerline. looks like
 ;;  its in beam sum? try interpolating delay for reals-only case instead of complex rotating delay
 
+;; (cl-radar.fmcw:write-radial-graph-data)
+
+@export
 (defun write-radial-graph-data ()
   (cl-radar.util:write-string-to-js-file
    "/Users/jackc/Projects/html5-display-widgets/data/radialfft.js"
    "radialfft"
    (cl-json:encode-json-to-string
-    (make-radial-graph-data :reals-only-p t)))
+    (make-radial-graph-data :reals-only-p nil)))
   (format t "k.~%"))
 
 (defun gen-thing ()
-  (let* ((rx-data (cl-radar.gen::generate-fmcw-if-samples
+  (let* ((rx-data (cl-radar.wavegen:generate-fmcw-if-samples
                   '((3.0 45.0 10.0)
                     ;;(0.5 -0.65 10.0)
                     )
