@@ -215,6 +215,18 @@
     (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
 
 @export
+(defun complex-named-window-in-place (ar &optional (window-fn #'bordeaux-fft:hann))
+  (let ((n (length ar)))
+    (loop for i from 0 below n
+          do
+             (let ((v (aref ar i))
+                   (win-val (funcall window-fn i n)))
+               (setf (aref ar i)
+                     (complex (* win-val (realpart v))
+                              (* win-val (imagpart v))))))
+    ar))
+
+@export
 (defun graph-complex-ar (in-ar)
   (let ((mags (complex-mags in-ar))
         (reals (array-mapcar #'realpart in-ar))

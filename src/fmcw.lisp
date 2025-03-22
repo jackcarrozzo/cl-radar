@@ -680,9 +680,11 @@ CL-USER>
 
                      (push sample-ar slices)
 
-                     (let ((fft-r
+                     (let* ((windowed-samples
+                              (cl-radar.math:complex-named-window-in-place sample-ar))
+                            (fft-r
                              (bordeaux-fft:windowed-fft
-                              sample-ar (/ ar-sample-len 2) ar-sample-len)))
+                              windowed-samples (/ ar-sample-len 2) ar-sample-len)))
                        (cl-radar.math:complex-ar-mags fft-r result-ar t))))
           (setf *last-fft-sum*
                 result-ar))
