@@ -814,3 +814,43 @@
                 (setf (aref output index)
                       (complex (cos phase) (sin phase)))))))
         output))))
+
+
+
+
+;;; ------ ofdm ----
+;;; TODO: psk and qam of each
+
+(defun fftshift (ar) ;; swap left and right halves
+  (let* ((ar-len (length ar))
+         (half-len (/ ar-len 2)))
+    (concatenate 'simple-vector
+                 (subseq ar half-len ar-len)
+                 (subseq ar 0 half-len))))
+
+(defun map-ofdm-bits (data-ar start-i n)
+  (let ((result (make-array (* 8 n))))
+    (loop
+      for i from 0 below n
+      for b = (aref data-ar (+ start-i i))
+      for offset = (* i 8) ;; byte offset
+      do (loop
+           for bit from 7 downto 0
+           for index = (+ offset (- 7 bit))
+           do (setf (aref result index)
+                    (if (zerop (logand b (ash 1 bit)))
+                        -1 1))))
+    result))
+
+#|
+CL-USER> (cl-radar.mod::map-ofdm-bits #(1 252) 0 2)
+#(-1 -1 -1 -1 -1 -1 -1 1 1 1 1 1 1 1 -1 -1)
+CL-USER> (cl-radar.mod::map-ofdm-bits #(1 252 5 4) 0 2)
+#(-1 -1 -1 -1 -1 -1 -1 1 1 1 1 1 1 1 -1 -1)
+CL-USER> (cl-radar.mod::map-ofdm-bits #(1 252 5 4) 0 4)
+#(-1 -1 -1 -1 -1 -1 -1 1 1 1 1 1 1 1 -1 -1 -1 -1 -1 -1 -1 1 -1 1 -1 -1 -1 -1 -1
+1 -1 -1)
+|#
+
+
+(defun ofdm-mod ())
