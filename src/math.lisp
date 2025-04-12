@@ -215,6 +215,15 @@
     (cl-radar.math:array-copy-into ar 0 ar-len r (round (/ pad-len 2)))))
 
 @export
+(defun csarrays-multiply (s1 s2)
+  (assert (= (length s1) (length s2)))
+  (let ((r (make-csarray (length s1))))
+    (dotimes (i (length s1))
+      (setf (aref r i)
+            (* (aref s1 i) (aref s2 i))))
+    r))
+
+@export
 (defun complex-named-window-in-place (ar &optional (window-fn #'bordeaux-fft:hann))
   (let ((n (length ar)))
     (loop for i from 0 below n
