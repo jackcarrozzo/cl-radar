@@ -72,13 +72,15 @@ Press Ctrl + C to stop streaming...
             (length syms) (length bb-samples))
     bb-samples))
 
+(defvar *last-read-complex-samples* nil)
+
 ;; TODO: put this in utils maybe?
-(defun read-sc16 (filename &optional (little-endian t))
+(defun read-sc16 (filename &optional (little-endian t) (max-samples 20000))
   (with-open-file (stream filename
                           :direction :input
                           :element-type '(unsigned-byte 8))
     (let* ((n-bytes (file-length stream))
-           (n-samples (/ n-bytes 2))
+           (n-samples (min max-samples (/ n-bytes 2)))
            ;;(n-samples 300)
            (r-ints (make-array n-samples :element-type '(signed-byte 16)))
            (r (make-array (/ n-samples 2) :initial-element #c(0.0d0 0.0d0)))
@@ -105,8 +107,33 @@ Press Ctrl + C to stop streaming...
                          (coerce value 'double-float)
                          (coerce q-val 'double-float))))))))
       ;;(values r r-ints)
-      r)))
+      (setf *last-read-complex-samples*
+            r))))
 
+;; TODO: follow freq error and move bpsk sample stream to baseband 0;
+;;   try using costas loop
+(defun figure-out-freq-err (&optional (complex-ar *last-read-complex-samples*))
+  )
+
+
+#|
+[jackc@nichor] ~/var/data/radardata/corr :) $ ls *short.dat
+short.am_1.499ghz_short.dat   short.bpsk_1.499ghz_short.dat
+short.am_1.5ghz_short.dat     short.bpsk_1.5ghz_short.dat
+
+(graph-recorded "~/var/data/radardata/corr/short.am_1.499ghz_short.dat")
+(graph-recorded "~/var/data/radardata/corr/short.am_1.5ghz_short.dat")
+(graph-recorded "~/var/data/radardata/corr/short.bpsk_1.5ghz_short.dat")
+
+|#
+
+;;
+(defun graph-recorded (fname)
+  (cl-radar.math::graph-complex-ar
+   (subseq
+    (read-sc16 fname)
+    8000 8800))
+  7)
 
 (defun graph-gen-vs-recorded ()
   (let* ((ref-ar (make-bpsk-reference-sig))

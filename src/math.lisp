@@ -236,12 +236,15 @@
     ar))
 
 @export
-(defun graph-complex-ar (in-ar)
-  (let ((mags (complex-mags in-ar))
+(defun graph-complex-ar (in-ar &optional include-magnitude-p)
+  (let ((mags (if include-magnitude-p (complex-mags in-ar)))
         (reals (array-mapcar #'realpart in-ar))
         (imags (array-mapcar #'imagpart in-ar))
         (x-ax (loop for i from 0 below (length in-ar) collecting i)))
-    (vgplot:plot x-ax mags "mags" x-ax reals "reals" x-ax imags "imags")))
+    (if include-magnitude-p
+        (vgplot:plot x-ax mags "mags" x-ax reals "reals" x-ax imags "imags")
+        (vgplot:plot x-ax reals "reals" x-ax imags "imags")
+        )))
 
 @export
 (defun graph-complex-fft (in-ar &optional sample-rate)
