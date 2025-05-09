@@ -672,6 +672,13 @@ video:0kB audio:753kB subtitle:0kB other streams:0kB global headers:0kB muxing o
 
 |#
 
+#|
+devline=`ffmpeg -f avfoundation -list_devices true -i "" 2>&1 |grep 'Studio 24c'` && echo $devline && echo $devline |sed 's/^.* \[\(.*\)\] Studio 24c/\1/'
+
+|#
+
+
+
 (defparameter +wav-write-path+ "/tmp/out-writing.wav") ;;TODO:
 (defparameter +wav-process-path+ "/tmp/out.wav")
 
@@ -692,7 +699,7 @@ video:0kB audio:753kB subtitle:0kB other streams:0kB global headers:0kB muxing o
   (cond
     ((member :darwin *features*)
      ;;(format nil "/usr/local/bin/ffmpeg -f avfoundation -ac 2 -i :1 -t 4 -y -hide_banner -nostats -nostdin ~a" +wav-write-path+)
-     (format nil "/usr/local/bin/ffmpeg -f avfoundation -ac 2 -i :0 -t 1 -y -hide_banner -nostats -nostdin ~a" +wav-write-path+)
+     (format nil "/usr/local/bin/ffmpeg -f avfoundation -ac 2 -i :1 -t 4 -y -hide_banner -nostats -nostdin ~a" +wav-write-path+)
      ;;(format nil "/usr/local/bin/ffmpeg -f avfoundation -i :0 -t 10 -y -hide_banner -nostats -nostdin ~a" +wav-write-path+)
      )
     ((nth-value 2 (uiop:run-program "uname -a|grep Linux" :ignore-error-status t)) ;; TODO:

@@ -181,11 +181,14 @@ CL-USER>
                (format t "----- stderr: ~%~a~%" errstr)
 
                (when (= 0 retval)
-                 (format t "-- Looks like capture succeeded, moving ~a to ~a and processing.~%"
+                 #|(format t "-- Looks like capture succeeded, moving ~a to ~a and processing.~%"
                          +wav-write-path+ +wav-process-path+)
                  (uiop:rename-file-overwriting-target +wav-write-path+ +wav-process-path+)
 
-                 (process-and-plot-single-wav +wav-process-path+ :log-scale-p nil)
+                 (process-and-plot-single-wav +wav-process-path+ :log-scale-p nil)|#
+
+                 (process-and-plot-single-wav +wav-write-path+ :log-scale-p nil)
+
                  (format t "----- done!~%"))))))
 
 ;; this is just single-capture-and-plot with less fancy graph (TODO:)
@@ -221,10 +224,14 @@ CL-USER>
   (osicat-posix:stat-mtime
    (osicat-posix:stat fpath)))
 
-(defparameter +watched-wav-path+ "/Users/jackc/out.wav")
+(defparameter +watched-wav-path+ "/Users/jackc/out-done.wav")
 (defvar *last-wav-mtime* nil)
 
 (defvar *n* 0) ;; frame counter
+
+#|
+for x in `seq 1 1000`; do echo num $x && /usr/local/bin/ffmpeg -f avfoundation -ac 2 -i :1 -t 4 -y -hide_banner -nostats -nostdin /Users/jackc/out-writing.wav && mv /Users/jackc/out-writing.wav /Users/jackc/out-done.wav; done
+|#
 
 @export
 (defun looping-dir-watcher-and-plot ()
@@ -232,11 +239,13 @@ CL-USER>
         do
            (let ((this-mtime (file-mtime +watched-wav-path+)))
              (when (not (eql this-mtime *last-wav-mtime*))
+               ;; sometimes this doesnt flush for a long time ??
                (format t "~%-- Found new wav, mtime ~a sec after prev.~%"
                        (- this-mtime (or *last-wav-mtime* (1+ this-mtime))))
                (setf *last-wav-mtime* this-mtime)
 
-               (single-capture-and-plot :log-scale-p nil))
+               (single-capture-and-plot :log-scale-p nil)
+               )
 
              (princ ".")
              (when (= 0 (mod i 10))
@@ -294,6 +303,15 @@ CL-USER>
                                         signal-samples-ars-list
                                         windowed-samples-ars-list
                                         from-i to-i)
+  #|
+  CL-USER> (subseq cl-radar.fmcw::*last-fmcw-edges* 0 10)
+  ((680 . 1183) (1442 . 1945) (2204 . 2707) (2966 . 3469) (3728 . 4231)
+  (4490 . 4993) (5252 . 5755) (6014 . 6517) (6776 . 7279) (7538 . 8041))
+
+  TODO: be smarter when to-i < first edge end
+  |#
+
+
 
   (let ((relevant-edges (filter-edges-by-bound edge-list from-i to-i))
         (trig-ar (subseq trigger-samples from-i to-i)) ;; TODO:
@@ -304,8 +322,8 @@ CL-USER>
                        ;;(subseq s-ar 0 (- to-i from-i))
                        )
                      signal-samples-ars-list)))
-    ;;(format t "-- ~a edges in, ~a out.~%" (length edge-list) (length relevant-edges))
-    ;;(format t "-- taking edges from ~a to ~a.~%" from-i to-i)
+    (format t "-- ~a edges in, ~a out.~%" (length edge-list) (length relevant-edges))
+    (format t "-- taking edges from ~a to ~a.~%" from-i to-i)
 
     ;; wtf TODO:
     ;;(format t "-- trig 1 2 3: ~a~%"
@@ -392,11 +410,15 @@ CL-USER>
 
 #|
 (cl-radar.image:write-slices-to-png (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :wav-path "~/Projects/cl-radar/data/2025-03-19_shop1.wav" :single-out-p nil :ac-trig-p t))
-
 (cl-radar.fmcw:looping-ws-fft-stream cl-radar.fmcw::*last-fft-slices* :log-p nil :slices-at-once 2 :include-waves-every 100)
+
+
+(cl-radar.image:write-slices-to-png (cl-radar.fmcw:read-and-slice-and-fft-stereo-wav :wav-path "~/Projects/cl-radar/data/2025-05-08 backforth 48k.wav" :single-out-p nil :ac-trig-p t ))
+(cl-radar.fmcw:looping-ws-fft-stream cl-radar.fmcw::*last-fft-slices* :log-p nil :slices-at-once 2 :include-waves-every 200 :wave-samples-len 1600)
 |#
 
 ;; TODO: send chunks of slices at a time (and tell the ui)
+;; TODO: better handle when no edges overlap with wave window
 
 @export
 (defun looping-ws-fft-stream (fft-slices-list &key (max-loops-thru 1000)
